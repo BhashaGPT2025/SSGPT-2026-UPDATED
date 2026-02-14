@@ -16,7 +16,8 @@ export default defineConfig(({ mode }) => {
       },
       resolve: {
         alias: {
-          '@': path.resolve(__dirname, '.'),
+          // Fix: Replaced __dirname with path.resolve() to ensure ESM compatibility in vite.config.ts.
+          '@': path.resolve('.'),
         }
       }
     };
