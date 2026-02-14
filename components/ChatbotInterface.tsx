@@ -84,7 +84,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     if (!process.env.API_KEY) return;
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     setChat(ai.chats.create({ 
-        model: 'gemini-3-pro-preview', 
+        model: 'gemini-3-flash-preview', 
         config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperTool] }] } 
     }));
     outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });

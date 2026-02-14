@@ -118,7 +118,6 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
     let questionCounter = 0;
     let sectionCount = 0;
     const isAnswerKey = options?.isAnswerKey ?? false;
-    const renderedQuestionsIds = new Set<number>();
 
     let contentHtml = '';
 
@@ -144,7 +143,6 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
         </div>
     `;
 
-    // Render categorized sections
     sectionOrder.forEach(type => {
         const qs = paperData.questions.filter(q => q.type === type);
         if (qs.length === 0) return;
@@ -163,29 +161,9 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
 
         qs.forEach(q => {
             questionCounter++;
-            renderedQuestionsIds.add(q.questionNumber);
             contentHtml += renderQuestion({ ...q, questionNumber: questionCounter }, isAnswerKey);
         });
     });
-
-    // Fallback Section: Render any questions that didn't match the strict types in sectionOrder
-    // This catches questions where the AI might have used a slightly different type string not caught by the normalizer
-    const remainingQuestions = paperData.questions.filter(q => !renderedQuestionsIds.has(q.questionNumber));
-    if (remainingQuestions.length > 0) {
-        sectionCount++;
-        contentHtml += `
-            <div style="text-align: center; margin: 30px 0 15px; font-weight: 800; text-transform: uppercase; font-size: 1.3em; break-inside: avoid;">
-                <span style="border-bottom: 1.5px solid #000; padding: 0 20px 2px;">SECTION ${String.fromCharCode(64 + sectionCount)}</span>
-            </div>
-            <div style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 20px; font-weight: 700; font-style: italic; color: #475569; break-inside: avoid;">
-                <span style="font-size: 1em;">${toRoman(sectionCount)}. Miscellaneous Questions</span>
-            </div>
-        `;
-        remainingQuestions.forEach(q => {
-            questionCounter++;
-            contentHtml += renderQuestion({ ...q, questionNumber: questionCounter }, isAnswerKey);
-        });
-    }
 
     return `<div id="paper-root" style="font-family: inherit; color: #000; background: #fff; width: 100%; min-height: 100%;">${contentHtml}</div>`;
 };
