@@ -25,7 +25,8 @@ const triggerMathRendering = (element: HTMLElement | null) => {
                 {left: '\\(', right: '\\)', display: false},
                 {left: '\\[', right: '\\]', display: true}
             ], 
-            throwOnError: false 
+            throwOnError: false,
+            errorColor: '#cc0000',
         });
     } catch (err) {
         console.error("KaTeX render error:", err);
@@ -110,13 +111,18 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         if (currentPageHtml) pages.push(currentPageHtml);
         document.body.removeChild(container);
         setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px;">Processing Paper...</div>']);
-        
-        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
     }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
 
     useEffect(() => {
         paginate();
     }, [paginate]);
+
+    // Ensure Math rendering happens whenever pages update OR export state changes (re-render fix)
+    useEffect(() => {
+        if (pagesContainerRef.current) {
+            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 50);
+        }
+    }, [pagesHtml, isExporting]);
 
     const handleExportPDF = async () => {
         if (isExporting) return;
@@ -152,12 +158,13 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 clonedPage.style.margin = '0';
                 clonedPage.style.transform = 'none';
                 
-                // Fix for KaTeX fraction lines
+                // Fix for KaTeX fraction lines specifically for HTML2Canvas export
                 const styleFix = document.createElement('style');
                 styleFix.innerHTML = `
                     .katex-html { display: block; }
-                    .frac-line { border-bottom-width: 1.5px !important; min-height: 1px !important; }
-                    .katex-line { border-bottom-width: 1.5px !important; min-height: 1px !important; }
+                    .frac-line, .katex-line { border-bottom-width: 2px !important; min-height: 2px !important; opacity: 1 !important; border-color: black !important; }
+                    .katex { font-size: 1.1em; line-height: 1.2; }
+                    body { -webkit-print-color-adjust: exact; }
                 `;
                 clonedPage.appendChild(styleFix);
 
@@ -165,19 +172,18 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 
                 // Render the clone
                 const canvas = await html2canvas(clonedPage, { 
-                    scale: 2.5, 
+                    scale: 3, 
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
                     allowTaint: true,
                     imageTimeout: 0,
                     onclone: (doc, element) => {
-                        // Ensure everything is visible
                         element.style.fontVariant = 'normal';
                     }
                 });
                 
-                const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                const imgData = canvas.toDataURL('image/jpeg', 0.98);
                 if (i > 0) pdf.addPage();
                 pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH);
                 

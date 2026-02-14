@@ -8,7 +8,7 @@ const handleApiError = (error: any, context: string) => {
     if (error?.message?.includes("Safety")) {
         throw new Error("The content was flagged by safety filters. Please adjust your topics to comply with academic standards.");
     }
-    throw new Error(`AI Generation Failed (${context}). Stability check: Using Gemini 3 series models.`);
+    throw new Error(`AI Generation Failed (${context}). API Quota may be exhausted or service is unavailable.`);
 };
 
 /**
@@ -20,7 +20,7 @@ const parseAiJson = (text: string) => {
         return JSON.parse(cleanedText);
     } catch (e) {
         console.error("JSON Parse Error. Raw text:", text);
-        throw new Error("The AI returned an invalid response format. Using Gemini 3 might require a slightly different prompt structure if errors persist.");
+        throw new Error("The AI returned an invalid response format.");
     }
 };
 
@@ -29,10 +29,10 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `Extract academic configuration from: "${transcript}". 
     Return JSON: {schoolName, className, subject, topics, difficulty, timeAllowed, questionDistribution: [{type, count, marks, taxonomy, difficulty}]}. 
-    Use LaTeX with double backslashes for any math.`;
+    Math Requirement: Use LaTeX wrapped in $ signs (e.g., $\\frac{a}{b}$) with double backslashes.`;
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-3-pro-preview",
+            model: "gemini-2.5-flash-latest",
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
@@ -47,8 +47,8 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles, modelQuality } = formData;
     
-    // Using Gemini 3 Pro Preview for all generations to ensure high quality
-    const modelToUse = 'gemini-3-pro-preview';
+    // Switch to Gemini 2.5 Flash for quota efficiency
+    const modelToUse = 'gemini-2.5-flash-latest';
 
     const finalPrompt = `
 You are a Senior Academic Examiner. Your task is to generate a high-quality, professional examination paper in JSON format.
@@ -58,9 +58,10 @@ You are a Senior Academic Examiner. Your task is to generate a high-quality, pro
 - Use formal academic tone and precise subject terminology appropriate for ${className}.
 
 **MATHEMATICAL & SCIENTIFIC FORMATTING (CRITICAL):**
-1. **LATEX FOR ALL MATH:** Use professional LaTeX for ALL formulas, equations, variables ($x$), symbols (multiplication $\\times$, division $\\div$, plus/minus $\\pm$, etc.), and units ($kg \\cdot m/s^2$).
-2. **ESCAPING:** You MUST use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}) for all LaTeX commands within JSON strings.
-3. **PACKAGING:** Enclose all LaTeX content in single dollar signs: $...$.
+1. **DELIMITERS:** You **MUST** wrap ALL mathematical formulas, variables, and equations in single dollar signs ($). Example: "Calculate $x$ where $x = 5$".
+2. **LATEX:** Use professional LaTeX for all math. 
+3. **ESCAPING:** You **MUST** use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}, \\\\pm) for all LaTeX commands within the JSON string.
+4. **NO RAW LATEX:** Never output \frac{a}{b} without the surrounding $ signs.
 
 **QUESTION STRUCTURE RULES:**
 - **NO NUMBERING:** DO NOT include any numbering prefixes like "1.", "Q1", "a)", "(i)", "Column A:" inside the strings.
@@ -140,9 +141,14 @@ export const generateImage = async (prompt: string, aspectRatio: string = '1:1')
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-image-preview',
+            model: 'gemini-2.5-flash-image',
             contents: prompt,
-            config: { imageConfig: { aspectRatio: aspectRatio as any, imageSize: "1K" } }
+            config: { 
+                imageConfig: { 
+                    aspectRatio: aspectRatio as any, 
+                    // imageSize is not supported in 2.5-flash-image
+                } 
+            }
         });
         for (const part of response.candidates![0].content.parts) {
             if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
@@ -158,10 +164,11 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     return ai.chats.create({
-        model: "gemini-3-pro-preview",
+        model: "gemini-2.5-flash-latest",
         config: {
             systemInstruction: `You are an expert academic editor.
             STRICT MATH: Use professional LaTeX with double backslashes inside JSON. 
+            WRAP MATH: Always wrap math in $ signs.
             NO REDUNDANT NUMBERING: The system handles all layout numbering. 
             Preserve the paper's original language strictly.`
         }
@@ -176,7 +183,7 @@ export const getAiEditResponse = async (chat: Chat, instruction: string) => {
 export const generateChatResponseStream = async (chat: Chat, messageParts: Part[], useSearch?: boolean, useThinking?: boolean): Promise<AsyncGenerator<GenerateContentResponse>> => {
     const config: any = {};
     if (useSearch) config.tools = [{ googleSearch: {} }];
-    if (useThinking) config.thinkingConfig = { thinkingBudget: 4096 };
+    // Thinking config is removed for 2.5 Flash to save quota
     return chat.sendMessageStream({ message: messageParts, config });
 };
 
@@ -198,8 +205,8 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
-        model: "gemini-3-pro-preview",
-        contents: `Analyze this content into JSON for a question paper. Math MUST be LaTeX with DOUBLE backslashes. Text: ${text}`,
+        model: "gemini-2.5-flash-latest",
+        contents: `Analyze this content into JSON for a question paper. Math MUST be LaTeX with DOUBLE backslashes and wrapped in $ signs. Text: ${text}`,
         config: { responseMimeType: "application/json" }
     });
     return parseAiJson(response.text as string) as AnalysisResult;
@@ -209,8 +216,8 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
-        model: "gemini-3-pro-preview",
-        contents: { parts: [...imageParts, { text: "Perform professional OCR and structure these questions into JSON. Use LaTeX with double backslashes for all math formulas." }] },
+        model: "gemini-2.5-flash-latest",
+        contents: { parts: [...imageParts, { text: "Perform professional OCR and structure these questions into JSON. Use LaTeX with double backslashes and $ wrappers for all math." }] },
         config: { responseMimeType: "application/json" }
     });
     return parseAiJson(response.text as string) as AnalysisResult;
