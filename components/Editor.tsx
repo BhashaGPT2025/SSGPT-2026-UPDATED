@@ -90,26 +90,32 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         let currentHeight = 0;
         const maxPageHeight = A4_HEIGHT_PX - 120; // 60px padding top/bottom
 
-        children.forEach(child => {
-            const el = child as HTMLElement;
-            const style = window.getComputedStyle(el);
-            const marginTop = parseFloat(style.marginTop || '0');
-            const marginBottom = parseFloat(style.marginBottom || '0');
-            const elHeight = el.getBoundingClientRect().height + marginTop + marginBottom;
-            
-            if (currentHeight + elHeight > maxPageHeight && currentPageHtml) { 
-                pages.push(currentPageHtml); 
-                currentPageHtml = ""; 
-                currentHeight = 0; 
-            }
-            
-            currentPageHtml += el.outerHTML; 
-            currentHeight += elHeight;
-        });
+        if (children.length === 0 && htmlContent) {
+            // Fallback if structured parsing fails but content exists
+            pages.push(htmlContent);
+        } else {
+            children.forEach(child => {
+                const el = child as HTMLElement;
+                const style = window.getComputedStyle(el);
+                const marginTop = parseFloat(style.marginTop || '0');
+                const marginBottom = parseFloat(style.marginBottom || '0');
+                const elHeight = el.getBoundingClientRect().height + marginTop + marginBottom;
+                
+                if (currentHeight + elHeight > maxPageHeight && currentPageHtml) { 
+                    pages.push(currentPageHtml); 
+                    currentPageHtml = ""; 
+                    currentHeight = 0; 
+                }
+                
+                currentPageHtml += el.outerHTML; 
+                currentHeight += elHeight;
+            });
+            if (currentPageHtml) pages.push(currentPageHtml);
+        }
 
-        if (currentPageHtml) pages.push(currentPageHtml);
         document.body.removeChild(container);
-        setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px;">Processing Paper...</div>']);
+        // Ensure we always have at least one page to show, even if empty, to avoid blank screen
+        setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px;">No content generated. Please try regenerating.</div>']);
         
         setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
     }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
