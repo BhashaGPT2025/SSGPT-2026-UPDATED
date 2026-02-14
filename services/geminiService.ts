@@ -8,13 +8,7 @@ const handleApiError = (error: any, context: string) => {
     if (error?.message?.includes("Safety")) {
         throw new Error("The content was flagged by safety filters. Please adjust your topics to comply with academic standards.");
     }
-    if (error?.message?.includes("429") || error?.message?.includes("Quota")) {
-        throw new Error("API Quota exhausted. Please try again later or switch to a paid API key.");
-    }
-    if (error?.message?.includes("404") || error?.message?.includes("not found")) {
-        throw new Error("Model not found. Please check API configuration.");
-    }
-    throw new Error(`AI Generation Failed (${context}). Please check your connection and API key.`);
+    throw new Error(`AI Generation Failed (${context}). Stability check: Using Gemini 3 series models.`);
 };
 
 /**
@@ -22,33 +16,23 @@ const handleApiError = (error: any, context: string) => {
  */
 const parseAiJson = (text: string) => {
     try {
-        // Handle cases where the model wraps JSON in markdown code blocks
         const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
         return JSON.parse(cleanedText);
     } catch (e) {
         console.error("JSON Parse Error. Raw text:", text);
-        // Attempt to find JSON array or object if mixed with text
-        const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-        if (jsonMatch) {
-            try {
-                return JSON.parse(jsonMatch[0]);
-            } catch (e2) {
-                throw new Error("The AI returned an invalid response format.");
-            }
-        }
-        throw new Error("The AI returned an invalid response format.");
+        throw new Error("The AI returned an invalid response format. Using Gemini 3 might require a slightly different prompt structure if errors persist.");
     }
 };
 
 export const extractConfigFromTranscript = async (transcript: string): Promise<any> => {
-    if (!process.env.API_KEY) throw new Error("Internal Error Occurred: API Key missing");
+    if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `Extract academic configuration from: "${transcript}". 
     Return JSON: {schoolName, className, subject, topics, difficulty, timeAllowed, questionDistribution: [{type, count, marks, taxonomy, difficulty}]}. 
-    Math Requirement: Use LaTeX wrapped in $ signs (e.g., $\\frac{a}{b}$) with double backslashes.`;
+    Use LaTeX with double backslashes for any math.`;
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-flash-latest",
+            model: "gemini-3-pro-preview",
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
@@ -59,13 +43,12 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
 };
 
 export const generateQuestionPaper = async (formData: FormData): Promise<QuestionPaperData> => {
-    if (!process.env.API_KEY) throw new Error("Internal Error Occurred: API Key missing");
+    if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles, modelQuality } = formData;
     
-    // Use gemini-flash-latest for maximum stability and quota efficiency.
-    // This maps to the currently best available Flash model (1.5 or 2.0).
-    const modelToUse = 'gemini-flash-latest';
+    // Using Gemini 3 Pro Preview for all generations to ensure high quality
+    const modelToUse = 'gemini-3-pro-preview';
 
     const finalPrompt = `
 You are a Senior Academic Examiner. Your task is to generate a high-quality, professional examination paper in JSON format.
@@ -75,10 +58,9 @@ You are a Senior Academic Examiner. Your task is to generate a high-quality, pro
 - Use formal academic tone and precise subject terminology appropriate for ${className}.
 
 **MATHEMATICAL & SCIENTIFIC FORMATTING (CRITICAL):**
-1. **DELIMITERS:** You **MUST** wrap ALL mathematical formulas, variables, and equations in single dollar signs ($). Example: "Calculate $x$ where $x = 5$".
-2. **LATEX:** Use professional LaTeX for all math. 
-3. **ESCAPING:** You **MUST** use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}, \\\\pm) for all LaTeX commands within the JSON string.
-4. **NO RAW LATEX:** Never output \frac{a}{b} without the surrounding $ signs.
+1. **LATEX FOR ALL MATH:** Use professional LaTeX for ALL formulas, equations, variables ($x$), symbols (multiplication $\\times$, division $\\div$, plus/minus $\\pm$, etc.), and units ($kg \\cdot m/s^2$).
+2. **ESCAPING:** You MUST use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}) for all LaTeX commands within JSON strings.
+3. **PACKAGING:** Enclose all LaTeX content in single dollar signs: $...$.
 
 **QUESTION STRUCTURE RULES:**
 - **NO NUMBERING:** DO NOT include any numbering prefixes like "1.", "Q1", "a)", "(i)", "Column A:" inside the strings.
@@ -107,7 +89,22 @@ Return only a valid JSON array of question objects.
             contents: { parts },
             config: { 
                 responseMimeType: "application/json",
-                // We use a looser schema or text parsing because sometimes strict schema on complex nesting (like MatchTheFollowing options) causes issues in Flash models
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            type: { type: Type.STRING },
+                            questionText: { type: Type.STRING },
+                            options: { description: "Array of strings for MCQ, or {columnA:[], columnB:[]} for Matching." },
+                            answer: { type: Type.STRING },
+                            marks: { type: Type.NUMBER },
+                            difficulty: { type: Type.STRING },
+                            taxonomy: { type: Type.STRING }
+                        },
+                        required: ["type", "questionText", "marks", "answer"]
+                    }
+                }
             }
         });
 
@@ -143,13 +140,9 @@ export const generateImage = async (prompt: string, aspectRatio: string = '1:1')
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
+            model: 'gemini-3-pro-image-preview',
             contents: prompt,
-            config: { 
-                imageConfig: { 
-                    aspectRatio: aspectRatio as any, 
-                } 
-            }
+            config: { imageConfig: { aspectRatio: aspectRatio as any, imageSize: "1K" } }
         });
         for (const part of response.candidates![0].content.parts) {
             if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
@@ -165,11 +158,10 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     return ai.chats.create({
-        model: "gemini-flash-latest",
+        model: "gemini-3-pro-preview",
         config: {
             systemInstruction: `You are an expert academic editor.
             STRICT MATH: Use professional LaTeX with double backslashes inside JSON. 
-            WRAP MATH: Always wrap math in $ signs.
             NO REDUNDANT NUMBERING: The system handles all layout numbering. 
             Preserve the paper's original language strictly.`
         }
@@ -184,7 +176,7 @@ export const getAiEditResponse = async (chat: Chat, instruction: string) => {
 export const generateChatResponseStream = async (chat: Chat, messageParts: Part[], useSearch?: boolean, useThinking?: boolean): Promise<AsyncGenerator<GenerateContentResponse>> => {
     const config: any = {};
     if (useSearch) config.tools = [{ googleSearch: {} }];
-    // Thinking disabled for Flash to save quota
+    if (useThinking) config.thinkingConfig = { thinkingBudget: 4096 };
     return chat.sendMessageStream({ message: messageParts, config });
 };
 
@@ -206,8 +198,8 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
-        model: "gemini-flash-latest",
-        contents: `Analyze this content into JSON for a question paper. Math MUST be LaTeX with DOUBLE backslashes and wrapped in $ signs. Text: ${text}`,
+        model: "gemini-3-pro-preview",
+        contents: `Analyze this content into JSON for a question paper. Math MUST be LaTeX with DOUBLE backslashes. Text: ${text}`,
         config: { responseMimeType: "application/json" }
     });
     return parseAiJson(response.text as string) as AnalysisResult;
@@ -217,8 +209,8 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
-        model: "gemini-flash-latest",
-        contents: { parts: [...imageParts, { text: "Perform professional OCR and structure these questions into JSON. Use LaTeX with double backslashes and $ wrappers for all math." }] },
+        model: "gemini-3-pro-preview",
+        contents: { parts: [...imageParts, { text: "Perform professional OCR and structure these questions into JSON. Use LaTeX with double backslashes for all math formulas." }] },
         config: { responseMimeType: "application/json" }
     });
     return parseAiJson(response.text as string) as AnalysisResult;

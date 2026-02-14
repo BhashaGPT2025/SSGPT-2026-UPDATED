@@ -25,8 +25,7 @@ const triggerMathRendering = (element: HTMLElement | null) => {
                 {left: '\\(', right: '\\)', display: false},
                 {left: '\\[', right: '\\]', display: true}
             ], 
-            throwOnError: false,
-            errorColor: '#cc0000',
+            throwOnError: false 
         });
     } catch (err) {
         console.error("KaTeX render error:", err);
@@ -111,18 +110,13 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         if (currentPageHtml) pages.push(currentPageHtml);
         document.body.removeChild(container);
         setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px;">Processing Paper...</div>']);
+        
+        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
     }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
 
     useEffect(() => {
         paginate();
     }, [paginate]);
-
-    // Ensure Math rendering happens whenever pages update OR export state changes (re-render fix)
-    useEffect(() => {
-        if (pagesContainerRef.current) {
-            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 50);
-        }
-    }, [pagesHtml, isExporting]);
 
     const handleExportPDF = async () => {
         if (isExporting) return;
@@ -131,67 +125,30 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const pdf = new jsPDF('p', 'px', 'a4');
             const pdfW = pdf.internal.pageSize.getWidth();
             const pdfH = pdf.internal.pageSize.getHeight();
-            
-            const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page');
+            const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page-content');
             
             if (!pageElements || pageElements.length === 0) {
                 alert("Nothing to export.");
                 return;
             }
-
-            // Use a temporary container for cloning to avoid touching the live DOM
-            const exportContainer = document.createElement('div');
-            exportContainer.style.position = 'fixed';
-            exportContainer.style.top = '0';
-            exportContainer.style.left = '0';
-            exportContainer.style.zIndex = '-9999';
-            exportContainer.style.visibility = 'hidden';
-            document.body.appendChild(exportContainer);
             
             for (let i = 0; i < pageElements.length; i++) {
-                const originalPage = pageElements[i] as HTMLElement;
-                const clonedPage = originalPage.cloneNode(true) as HTMLElement;
+                const el = pageElements[i] as HTMLElement;
+                triggerMathRendering(el);
                 
-                // Ensure dimensions match A4 exactly
-                clonedPage.style.width = `${A4_WIDTH_PX}px`;
-                clonedPage.style.height = `${A4_HEIGHT_PX}px`;
-                clonedPage.style.margin = '0';
-                clonedPage.style.transform = 'none';
-                
-                // Fix for KaTeX fraction lines specifically for HTML2Canvas export
-                const styleFix = document.createElement('style');
-                styleFix.innerHTML = `
-                    .katex-html { display: block; }
-                    .frac-line, .katex-line { border-bottom-width: 2px !important; min-height: 2px !important; opacity: 1 !important; border-color: black !important; }
-                    .katex { font-size: 1.1em; line-height: 1.2; }
-                    body { -webkit-print-color-adjust: exact; }
-                `;
-                clonedPage.appendChild(styleFix);
-
-                exportContainer.appendChild(clonedPage);
-                
-                // Render the clone
-                const canvas = await html2canvas(clonedPage, { 
-                    scale: 3, 
+                const canvas = await html2canvas(el, { 
+                    scale: 3.5, 
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
                     allowTaint: true,
-                    imageTimeout: 0,
-                    onclone: (doc, element) => {
-                        element.style.fontVariant = 'normal';
-                    }
+                    imageTimeout: 0
                 });
                 
-                const imgData = canvas.toDataURL('image/jpeg', 0.98);
+                const imgData = canvas.toDataURL('image/png');
                 if (i > 0) pdf.addPage();
-                pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH);
-                
-                exportContainer.removeChild(clonedPage);
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH, undefined, 'SLOW');
             }
-            
-            document.body.removeChild(exportContainer);
-
             const suffix = isAnswerKeyMode ? '_Answer_Key' : '_Question_Paper';
             pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}${suffix}.pdf`);
         } catch (error) {
