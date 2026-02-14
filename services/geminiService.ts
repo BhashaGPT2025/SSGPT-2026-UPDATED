@@ -32,7 +32,7 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
     Use LaTeX with double backslashes for any math.`;
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: "gemini-3-pro-preview",
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
@@ -47,8 +47,8 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles, modelQuality } = formData;
     
-    // Using Gemini 3 series as requested for stability
-    const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
+    // Using Gemini 3 Pro Preview for all generations to ensure high quality
+    const modelToUse = 'gemini-3-pro-preview';
 
     const finalPrompt = `
 You are a Senior Academic Examiner. Your task is to generate a high-quality, professional examination paper in JSON format.
@@ -140,9 +140,9 @@ export const generateImage = async (prompt: string, aspectRatio: string = '1:1')
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
+            model: 'gemini-3-pro-image-preview',
             contents: prompt,
-            config: { imageConfig: { aspectRatio: aspectRatio as any } }
+            config: { imageConfig: { aspectRatio: aspectRatio as any, imageSize: "1K" } }
         });
         for (const part of response.candidates![0].content.parts) {
             if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
@@ -198,7 +198,7 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3-pro-preview",
         contents: `Analyze this content into JSON for a question paper. Math MUST be LaTeX with DOUBLE backslashes. Text: ${text}`,
         config: { responseMimeType: "application/json" }
     });
@@ -209,7 +209,7 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3-pro-preview",
         contents: { parts: [...imageParts, { text: "Perform professional OCR and structure these questions into JSON. Use LaTeX with double backslashes for all math formulas." }] },
         config: { responseMimeType: "application/json" }
     });
