@@ -8,7 +8,13 @@ const handleApiError = (error: any, context: string) => {
     if (error?.message?.includes("Safety")) {
         throw new Error("The content was flagged by safety filters. Please adjust your topics to comply with academic standards.");
     }
-    throw new Error(`AI Generation Failed (${context}). API Quota may be exhausted or service is unavailable.`);
+    if (error?.message?.includes("429") || error?.message?.includes("Quota")) {
+        throw new Error("API Quota exhausted. Please try again later or switch to a paid API key.");
+    }
+    if (error?.message?.includes("404") || error?.message?.includes("not found")) {
+        throw new Error("Model not found. Please check API configuration.");
+    }
+    throw new Error(`AI Generation Failed (${context}). Please check your connection and API key.`);
 };
 
 /**
@@ -16,23 +22,33 @@ const handleApiError = (error: any, context: string) => {
  */
 const parseAiJson = (text: string) => {
     try {
+        // Handle cases where the model wraps JSON in markdown code blocks
         const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
         return JSON.parse(cleanedText);
     } catch (e) {
         console.error("JSON Parse Error. Raw text:", text);
+        // Attempt to find JSON array or object if mixed with text
+        const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+        if (jsonMatch) {
+            try {
+                return JSON.parse(jsonMatch[0]);
+            } catch (e2) {
+                throw new Error("The AI returned an invalid response format.");
+            }
+        }
         throw new Error("The AI returned an invalid response format.");
     }
 };
 
 export const extractConfigFromTranscript = async (transcript: string): Promise<any> => {
-    if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
+    if (!process.env.API_KEY) throw new Error("Internal Error Occurred: API Key missing");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `Extract academic configuration from: "${transcript}". 
     Return JSON: {schoolName, className, subject, topics, difficulty, timeAllowed, questionDistribution: [{type, count, marks, taxonomy, difficulty}]}. 
     Math Requirement: Use LaTeX wrapped in $ signs (e.g., $\\frac{a}{b}$) with double backslashes.`;
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-latest",
+            model: "gemini-flash-latest",
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
@@ -43,12 +59,13 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
 };
 
 export const generateQuestionPaper = async (formData: FormData): Promise<QuestionPaperData> => {
-    if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
+    if (!process.env.API_KEY) throw new Error("Internal Error Occurred: API Key missing");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles, modelQuality } = formData;
     
-    // Switch to Gemini 2.5 Flash for quota efficiency
-    const modelToUse = 'gemini-2.5-flash-latest';
+    // Use gemini-flash-latest for maximum stability and quota efficiency.
+    // This maps to the currently best available Flash model (1.5 or 2.0).
+    const modelToUse = 'gemini-flash-latest';
 
     const finalPrompt = `
 You are a Senior Academic Examiner. Your task is to generate a high-quality, professional examination paper in JSON format.
@@ -90,22 +107,7 @@ Return only a valid JSON array of question objects.
             contents: { parts },
             config: { 
                 responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            type: { type: Type.STRING },
-                            questionText: { type: Type.STRING },
-                            options: { description: "Array of strings for MCQ, or {columnA:[], columnB:[]} for Matching." },
-                            answer: { type: Type.STRING },
-                            marks: { type: Type.NUMBER },
-                            difficulty: { type: Type.STRING },
-                            taxonomy: { type: Type.STRING }
-                        },
-                        required: ["type", "questionText", "marks", "answer"]
-                    }
-                }
+                // We use a looser schema or text parsing because sometimes strict schema on complex nesting (like MatchTheFollowing options) causes issues in Flash models
             }
         });
 
@@ -146,7 +148,6 @@ export const generateImage = async (prompt: string, aspectRatio: string = '1:1')
             config: { 
                 imageConfig: { 
                     aspectRatio: aspectRatio as any, 
-                    // imageSize is not supported in 2.5-flash-image
                 } 
             }
         });
@@ -164,7 +165,7 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     return ai.chats.create({
-        model: "gemini-2.5-flash-latest",
+        model: "gemini-flash-latest",
         config: {
             systemInstruction: `You are an expert academic editor.
             STRICT MATH: Use professional LaTeX with double backslashes inside JSON. 
@@ -183,7 +184,7 @@ export const getAiEditResponse = async (chat: Chat, instruction: string) => {
 export const generateChatResponseStream = async (chat: Chat, messageParts: Part[], useSearch?: boolean, useThinking?: boolean): Promise<AsyncGenerator<GenerateContentResponse>> => {
     const config: any = {};
     if (useSearch) config.tools = [{ googleSearch: {} }];
-    // Thinking config is removed for 2.5 Flash to save quota
+    // Thinking disabled for Flash to save quota
     return chat.sendMessageStream({ message: messageParts, config });
 };
 
@@ -205,7 +206,7 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-latest",
+        model: "gemini-flash-latest",
         contents: `Analyze this content into JSON for a question paper. Math MUST be LaTeX with DOUBLE backslashes and wrapped in $ signs. Text: ${text}`,
         config: { responseMimeType: "application/json" }
     });
@@ -216,7 +217,7 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-latest",
+        model: "gemini-flash-latest",
         contents: { parts: [...imageParts, { text: "Perform professional OCR and structure these questions into JSON. Use LaTeX with double backslashes and $ wrappers for all math." }] },
         config: { responseMimeType: "application/json" }
     });

@@ -57,8 +57,8 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     try {
       if (!process.env.API_KEY) throw new Error("API_KEY is not configured.");
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      // Using gemini-2.5-flash-latest for standard chat
-      const newChat = ai.chats.create({ model: 'gemini-2.5-flash-latest', config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperFunctionDeclaration] }] } });
+      // Using standard gemini-flash-latest for stability
+      const newChat = ai.chats.create({ model: 'gemini-flash-latest', config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperFunctionDeclaration] }] } });
       setChat(newChat);
       const importedFilesRaw = sessionStorage.getItem('ssgpt_imported_files');
       if (!importedFilesRaw) {
@@ -170,7 +170,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     let stream: MediaStream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch(err) { setCurrentUserText("Microphone access denied."); setIsLiveSessionActive(false); return; }
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY }); const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 }); const sources = new Set<AudioBufferSourceNode>(); nextStartTime = 0;
-    // Using correct 12-2025 model for live audio
+    // Using correct 12-2025 model for live audio which is distinct from text model
     sessionPromiseRef.current = ai.live.connect({
       model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       callbacks: {
