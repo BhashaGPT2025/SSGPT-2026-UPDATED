@@ -125,30 +125,67 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const pdf = new jsPDF('p', 'px', 'a4');
             const pdfW = pdf.internal.pageSize.getWidth();
             const pdfH = pdf.internal.pageSize.getHeight();
-            const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page-content');
+            
+            const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page');
             
             if (!pageElements || pageElements.length === 0) {
                 alert("Nothing to export.");
                 return;
             }
+
+            // Use a temporary container for cloning to avoid touching the live DOM
+            const exportContainer = document.createElement('div');
+            exportContainer.style.position = 'fixed';
+            exportContainer.style.top = '0';
+            exportContainer.style.left = '0';
+            exportContainer.style.zIndex = '-9999';
+            exportContainer.style.visibility = 'hidden';
+            document.body.appendChild(exportContainer);
             
             for (let i = 0; i < pageElements.length; i++) {
-                const el = pageElements[i] as HTMLElement;
-                triggerMathRendering(el);
+                const originalPage = pageElements[i] as HTMLElement;
+                const clonedPage = originalPage.cloneNode(true) as HTMLElement;
                 
-                const canvas = await html2canvas(el, { 
-                    scale: 3.5, 
+                // Ensure dimensions match A4 exactly
+                clonedPage.style.width = `${A4_WIDTH_PX}px`;
+                clonedPage.style.height = `${A4_HEIGHT_PX}px`;
+                clonedPage.style.margin = '0';
+                clonedPage.style.transform = 'none';
+                
+                // Fix for KaTeX fraction lines
+                const styleFix = document.createElement('style');
+                styleFix.innerHTML = `
+                    .katex-html { display: block; }
+                    .frac-line { border-bottom-width: 1.5px !important; min-height: 1px !important; }
+                    .katex-line { border-bottom-width: 1.5px !important; min-height: 1px !important; }
+                `;
+                clonedPage.appendChild(styleFix);
+
+                exportContainer.appendChild(clonedPage);
+                
+                // Render the clone
+                const canvas = await html2canvas(clonedPage, { 
+                    scale: 2.5, 
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
                     allowTaint: true,
-                    imageTimeout: 0
+                    imageTimeout: 0,
+                    onclone: (doc, element) => {
+                        // Ensure everything is visible
+                        element.style.fontVariant = 'normal';
+                    }
                 });
                 
-                const imgData = canvas.toDataURL('image/png');
+                const imgData = canvas.toDataURL('image/jpeg', 0.95);
                 if (i > 0) pdf.addPage();
-                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH, undefined, 'SLOW');
+                pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH);
+                
+                exportContainer.removeChild(clonedPage);
             }
+            
+            document.body.removeChild(exportContainer);
+
             const suffix = isAnswerKeyMode ? '_Answer_Key' : '_Question_Paper';
             pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}${suffix}.pdf`);
         } catch (error) {
