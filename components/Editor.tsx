@@ -35,7 +35,6 @@ const triggerMathRendering = (element: HTMLElement | null) => {
 const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: QuestionPaperData) => void; onSaveAndExit: () => void; onReady: () => void; }>((props, ref) => {
     const { paperData, onSave, onSaveAndExit, onReady } = props;
     
-    // Fix: Explicitly typed state to resolve compatibility issues with branding updates and optional properties.
     const [state, setState] = useState<{
         paper: QuestionPaperData;
         styles: PaperStyles;
@@ -61,13 +60,14 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
     useEffect(() => {
         setEditingChat(createEditingChat(paperData));
-        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Paper formatting optimized for board standards. Ready for review." }]);
+        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Paper formatting updated to board-exam standards. Use the chat to request further changes." }]);
         onReady();
     }, []);
 
     const paginate = useCallback(() => {
         const container = document.createElement('div');
-        container.style.width = `${A4_WIDTH_PX - 120}px`; // Proper A4 width margin
+        // Reduced container width to account for margins accurately
+        container.style.width = `${A4_WIDTH_PX - 140}px`; 
         container.style.fontFamily = state.styles.fontFamily;
         container.style.position = 'absolute';
         container.style.left = '-9999px';
@@ -88,7 +88,8 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         const pages: string[] = [];
         let currentPageHtml = ""; 
         let currentHeight = 0;
-        const maxPageHeight = A4_HEIGHT_PX - 120; // 60px padding top/bottom
+        // Adjusted max height for standard margins (approx 1 inch top/bottom)
+        const maxPageHeight = A4_HEIGHT_PX - 160; 
 
         children.forEach(child => {
             const el = child as HTMLElement;
@@ -111,7 +112,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         document.body.removeChild(container);
         setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px;">Processing Paper...</div>']);
         
-        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
+        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 50);
     }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
 
     useEffect(() => {
@@ -137,20 +138,18 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 triggerMathRendering(el);
                 
                 const canvas = await html2canvas(el, { 
-                    scale: 3.5, 
+                    scale: 3, 
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
-                    allowTaint: true,
-                    imageTimeout: 0
+                    allowTaint: true
                 });
                 
                 const imgData = canvas.toDataURL('image/png');
                 if (i > 0) pdf.addPage();
-                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH, undefined, 'SLOW');
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
             }
-            const suffix = isAnswerKeyMode ? '_Answer_Key' : '_Question_Paper';
-            pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}${suffix}.pdf`);
+            pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}_final.pdf`);
         } catch (error) {
             console.error("PDF Export Error:", error);
             alert("Internal Error Occurred during export.");
@@ -186,8 +185,8 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             {isExporting && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center text-white">
                     <SpinnerIcon className="w-16 h-16 mb-6 text-indigo-400" />
-                    <h2 className="text-2xl font-black tracking-tight">Finalizing PDF</h2>
-                    <p className="text-slate-400 mt-2 px-10 text-center">Applying professional grade formatting and math rendering.</p>
+                    <h2 className="text-2xl font-black tracking-tight">Exporting High-Quality PDF</h2>
+                    <p className="text-slate-400 mt-2">Processing mathematical layouts...</p>
                 </div>
             )}
             <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
@@ -220,7 +219,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 {pagesHtml.map((html, i) => (
                     <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-10 relative overflow-hidden" 
                         style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX }}>
-                        <div className="paper-page-content prose max-w-none p-[60px]" 
+                        <div className="paper-page-content prose max-w-none p-[70px]" 
                              style={{ fontFamily: state.styles.fontFamily, minHeight: '100%', background: 'white' }} 
                              dangerouslySetInnerHTML={{ __html: html }} />
                     </div>
