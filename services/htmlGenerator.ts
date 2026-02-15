@@ -35,16 +35,16 @@ const renderOptions = (question: Question): string => {
         if (options.length >= 4) {
             return `<table style="width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; font-family: inherit;"><tbody>
                     <tr>
-                        <td style="width: 50%; vertical-align: top; padding: 6px 10px 6px 0; font-size: 1.05em; line-height: 1.8;">(a) ${formatText(options[0])}</td>
-                        <td style="width: 50%; vertical-align: top; padding: 6px 0 6px 10px; font-size: 1.05em; line-height: 1.8;">(b) ${formatText(options[1])}</td>
+                        <td style="width: 50%; vertical-align: top; padding: 6px 10px 6px 0; font-size: 1.05em; line-height: 1.9;">(a) ${formatText(options[0])}</td>
+                        <td style="width: 50%; vertical-align: top; padding: 6px 0 6px 10px; font-size: 1.05em; line-height: 1.9;">(b) ${formatText(options[1])}</td>
                     </tr>
                     <tr>
-                        <td style="width: 50%; vertical-align: top; padding: 6px 10px 6px 0; font-size: 1.05em; line-height: 1.8;">(c) ${formatText(options[2])}</td>
-                        <td style="width: 50%; vertical-align: top; padding: 6px 0 6px 10px; font-size: 1.05em; line-height: 1.8;">(d) ${formatText(options[3])}</td>
+                        <td style="width: 50%; vertical-align: top; padding: 6px 10px 6px 0; font-size: 1.05em; line-height: 1.9;">(c) ${formatText(options[2])}</td>
+                        <td style="width: 50%; vertical-align: top; padding: 6px 0 6px 10px; font-size: 1.05em; line-height: 1.9;">(d) ${formatText(options[3])}</td>
                     </tr>
                 </tbody></table>`;
         }
-        return `<div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 1.05em; line-height: 1.8;">
+        return `<div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 1.05em; line-height: 1.9;">
             ${options.map((opt, i) => `<div style="break-inside: avoid;">(${String.fromCharCode(97 + i)}) ${formatText(opt)}</div>`).join('')}
         </div>`;
     } else if (question.type === QuestionType.MatchTheFollowing) {
@@ -68,8 +68,8 @@ const renderOptions = (question: Question): string => {
 
         const rows = colA.map((item, index) => `
             <tr>
-                <td style="padding: 10px; border: 1px solid #000; width: 50%; vertical-align: middle; font-size: 1em; line-height: 1.6;">(${index + 1}) ${formatText(item)}</td>
-                <td style="padding: 10px; border: 1px solid #000; width: 50%; vertical-align: middle; font-size: 1em; line-height: 1.6;">${colB[index] ? `(${String.fromCharCode(97 + index)}) ${formatText(colB[index])}` : ''}</td>
+                <td style="padding: 10px; border: 1px solid #000; width: 50%; vertical-align: middle; font-size: 1em; line-height: 1.7;">(${index + 1}) ${formatText(item)}</td>
+                <td style="padding: 10px; border: 1px solid #000; width: 50%; vertical-align: middle; font-size: 1em; line-height: 1.7;">${colB[index] ? `(${String.fromCharCode(97 + index)}) ${formatText(colB[index])}` : ''}</td>
             </tr>
         `).join('');
 
@@ -90,19 +90,19 @@ const renderOptions = (question: Question): string => {
 const renderQuestion = (question: Question, isAnswerKey: boolean): string => {
     const optionsHtml = renderOptions(question);
     const answerHtml = isAnswerKey ? `
-        <div style="margin-top: 10px; padding: 10px; background-color: #f8fafc; border-left: 4px solid #334155; border-radius: 2px; font-size: 1em; break-inside: avoid; line-height: 1.6;">
+        <div style="margin-top: 10px; padding: 10px; background-color: #f8fafc; border-left: 4px solid #334155; border-radius: 2px; font-size: 1em; break-inside: avoid; line-height: 1.7;">
             <strong style="color: #334155; text-transform: uppercase; font-size: 0.75em;">Solution:</strong>
             <div style="margin-top: 4px;">${formatText(typeof question.answer === 'string' ? question.answer : JSON.stringify(question.answer))}</div>
         </div>
     ` : '';
 
-    return `<div class="question-block" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 2rem; width: 100%;">
+    return `<div class="question-block" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 2.5rem; width: 100%;">
             <table style="width: 100%; border-collapse: collapse;">
                 <tbody>
                     <tr>
-                        <td style="vertical-align: top; width: 35px; font-weight: bold; font-size: 1.1em; line-height: 1.6; white-space: nowrap;">${question.questionNumber}.</td>
-                        <td style="vertical-align: top; text-align: left; line-height: 1.8; font-size: 1.1em; padding-right: 15px; width: auto;">${formatText(question.questionText)}</td>
-                        <td style="vertical-align: top; text-align: right; width: 60px; font-weight: bold; font-size: 1em; line-height: 1.6; white-space: nowrap;">[${question.marks}]</td>
+                        <td style="vertical-align: top; width: 35px; font-weight: bold; font-size: 1.1em; line-height: 1.9; white-space: nowrap;">${question.questionNumber}.</td>
+                        <td style="vertical-align: top; text-align: left; line-height: 1.9; font-size: 1.1em; padding-right: 15px; width: auto;">${formatText(question.questionText)}</td>
+                        <td style="vertical-align: top; text-align: right; width: 60px; font-weight: bold; font-size: 1em; line-height: 1.9; white-space: nowrap;">[${question.marks}]</td>
                     </tr>
                 </tbody>
             </table>
@@ -191,5 +191,5 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
         });
     }
 
-    return `<div id="paper-root" style="font-family: inherit; color: #000; background: #fff; width: 100%; min-height: 100%; line-height: 1.8;">${contentHtml}</div>`;
+    return `<div id="paper-root" style="font-family: inherit; color: #000; background: #fff; width: 100%; min-height: 100%; line-height: 1.9;">${contentHtml}</div>`;
 };

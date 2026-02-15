@@ -63,22 +63,17 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     useEffect(() => {
         setEditingChat(createEditingChat(paperData));
         setCoEditorMessages([{ id: '1', sender: 'bot', text: "Paper formatting optimized for board standards. Ready for review." }]);
-        // Notify parent that editor is mounted/ready
         onReady();
     }, []);
 
-    const paginate = useCallback(() => {
-        // Create a hidden staging area to render content and measure heights accurately
+    const paginate = useCallback(async () => {
         const container = document.createElement('div');
-        // Match the width and padding of the actual page
         container.style.width = `${A4_WIDTH_PX}px`; 
         container.style.fontFamily = state.styles.fontFamily;
         container.style.position = 'absolute';
         container.style.left = '-9999px';
         container.style.top = '0';
-        container.style.backgroundColor = 'white'; // Ensure background helps with readability debugging if inspected
-        
-        // IMPORTANT: Add padding to container to match page content padding for accurate height calculation
+        container.style.visibility = 'hidden';
         container.style.padding = '60px'; 
         container.style.boxSizing = 'border-box';
 
@@ -87,66 +82,61 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             isAnswerKey: isAnswerKeyMode
         });
         
-        // Wrap in a div to ensure children are captured correctly
         container.innerHTML = `<div id="paper-root">${htmlContent}</div>`;
-        document.body.appendChild(container);
         
-        // Get the inner wrapper we just created
-        const contentRoot = container.querySelector('#paper-root') || container.children[0];
-        // Get strict array of children to iterate (Sections, Headers, Question Blocks)
+        // Wait for math to render in hidden container before measuring
+        await new Promise<void>(resolve => {
+            document.body.appendChild(container);
+            triggerMathRendering(container);
+            setTimeout(() => resolve(), 100); // Allow time for DOM reflow after KaTeX
+        });
+        
+        const contentRoot = container.querySelector('#paper-root');
         const children = Array.from(contentRoot?.children || []);
-        
         const pages: string[] = [];
         let currentPageHtml = ""; 
         let currentHeight = 0;
-        // Height available for content = A4 Height - (Top Padding + Bottom Padding)
         const maxContentHeight = A4_HEIGHT_PX - 120; 
 
-        if (children.length === 0) {
-            // Fallback if structure parsing fails, just dump content
-            pages.push(htmlContent);
-        } else {
+        if (children.length > 0) {
             children.forEach((child) => {
                 const el = child as HTMLElement;
-                // Get precise height including margins using getBoundingClientRect
-                const rect = el.getBoundingClientRect();
                 const style = window.getComputedStyle(el);
                 const marginTop = parseFloat(style.marginTop) || 0;
                 const marginBottom = parseFloat(style.marginBottom) || 0;
-                const elHeight = rect.height + marginTop + marginBottom;
+                const elHeight = el.offsetHeight + marginTop + marginBottom;
                 
-                // If the element alone is taller than a page (rare for questions, possible for massive text blocks)
-                // We just let it overflow or clip for now to avoid infinite loops, but warn.
-                
-                // If adding this element exceeds the page height
-                if (currentHeight + elHeight > maxContentHeight) {
-                    // Push current page if it has content
-                    if (currentPageHtml.length > 0) {
-                        pages.push(currentPageHtml);
-                        currentPageHtml = "";
-                        currentHeight = 0;
-                    }
+                if (currentHeight > 0 && currentHeight + elHeight > maxContentHeight) {
+                    pages.push(currentPageHtml);
+                    currentPageHtml = "";
+                    currentHeight = 0;
                 }
                 
                 currentPageHtml += el.outerHTML; 
                 currentHeight += elHeight;
             });
             
-            // Push the final page
-            if (currentPageHtml.length > 0) {
+            if (currentPageHtml) {
                 pages.push(currentPageHtml);
             }
         }
 
         document.body.removeChild(container);
-        setPagesHtml(pages.length > 0 ? pages : [htmlContent]);
         
-        // Trigger Math Rendering after state update
-        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
+        // Failsafe: if pagination produces no pages, show all content on one page
+        if (pages.length === 0 && htmlContent.length > 0) {
+            setPagesHtml([htmlContent]);
+        } else {
+            setPagesHtml(pages);
+        }
+        
     }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
 
     useEffect(() => {
-        paginate();
+        paginate().then(() => {
+            // After state is updated and pages are in DOM, render math visibly
+            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
+        });
     }, [paginate]);
 
     const handleExportPDF = async () => {
@@ -160,20 +150,19 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             
             if (!pageElements || pageElements.length === 0) {
                 alert("Nothing to export. Please wait for the paper to render.");
+                setIsExporting(false);
                 return;
             }
             
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
                 
-                // Use html2canvas with settings optimized for text clarity
                 const canvas = await html2canvas(el, { 
                     scale: 2, 
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
                     allowTaint: true,
-                    // Capture full scroll height to avoid cut-offs if content slightly overflows
                     height: el.scrollHeight, 
                     windowHeight: el.scrollHeight
                 });
@@ -181,7 +170,6 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 const imgData = canvas.toDataURL('image/png');
                 if (i > 0) pdf.addPage();
                 
-                // Add image to PDF with a tiny margin of safety or exact fit
                 pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
             }
             
@@ -254,9 +242,9 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             <main className="flex-1 overflow-auto p-8 bg-slate-300 dark:bg-slate-950/20" ref={pagesContainerRef}>
                 {pagesHtml.map((html, i) => (
                     <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-10 relative" 
-                        style={{ width: A4_WIDTH_PX, minHeight: A4_HEIGHT_PX }}>
+                        style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX }}>
                         <div className="paper-page-content prose max-w-none p-[60px]" 
-                             style={{ fontFamily: state.styles.fontFamily, minHeight: '100%', background: 'white' }} 
+                             style={{ fontFamily: state.styles.fontFamily, height: '100%', background: 'white' }} 
                              dangerouslySetInnerHTML={{ __html: html }} />
                     </div>
                 ))}
