@@ -44,16 +44,14 @@ function App() {
   
   const [selectedImageForEdit, setSelectedImageForEdit] = useState<UploadedImage | null>(null);
 
-  // Editor Ref Management
+  // Editor Ref Management using Callback Ref
   const editorRef = useRef<any>(null);
-  const [isEditorReady, setIsEditorReady] = useState(false);
+  // We use this state to force a re-render when the editor mounts/unmounts
+  const [isEditorMounted, setIsEditorMounted] = useState(false);
 
-  // Callback ref to force re-render when Editor mounts
   const setEditorRef = useCallback((node: any) => {
       editorRef.current = node;
-      if (node) {
-          setIsEditorReady(true);
-      }
+      setIsEditorMounted(!!node);
   }, []);
 
   useEffect(() => {
@@ -157,7 +155,7 @@ function App() {
 
   const handleGenerate = useCallback((formData: FormData) => {
     setActivePaper(null);
-    setIsEditorReady(false);
+    setIsEditorMounted(false);
     
     executeGeneration(async () => {
         const paper = await generateQuestionPaper(formData);
@@ -179,7 +177,7 @@ function App() {
   const handleAnalysisComplete = (paper: QuestionPaperData) => {
     setIsLoading(true);
     setError(null);
-    setIsEditorReady(false);
+    setIsEditorMounted(false);
 
     const finalPaper: QuestionPaperData = {
         ...paper,
@@ -209,13 +207,13 @@ function App() {
   
   const handleExitEditor = () => {
       setActivePaper(null);
-      setIsEditorReady(false);
+      setIsEditorMounted(false);
       setPage(currentUser?.role === 'teacher' ? 'myPapers' : 'studentDashboard');
   };
   
   const handleEditPaper = (paper: QuestionPaperData) => {
       setActivePaper(paper);
-      setIsEditorReady(false);
+      setIsEditorMounted(false);
       setPage('edit');
   };
   
@@ -266,7 +264,7 @@ function App() {
             authService.saveAttendedPaper(paperData);
             setAttendedPapers(authService.getAttendedPapers());
             setActivePaper(paperData);
-            setIsEditorReady(false);
+            setIsEditorMounted(false);
             setPage('edit');
         } catch (e) {
             console.error("Failed to process pasted link:", e);
@@ -276,7 +274,7 @@ function App() {
     
     const handleViewAttendedPaper = (paper: QuestionPaperData) => {
         setActivePaper(paper);
-        setIsEditorReady(false);
+        setIsEditorMounted(false);
         setPage('edit');
     };
     
@@ -289,7 +287,7 @@ function App() {
     setError(null);
     if (targetPage !== 'edit') {
         setActivePaper(null);
-        setIsEditorReady(false);
+        setIsEditorMounted(false);
     }
     if (targetPage !== 'analyze') {
         setTextToAnalyze(null);
@@ -374,7 +372,7 @@ function App() {
             if (imagesToAnalyze) return <AnalysisScreen imagesToAnalyze={imagesToAnalyze} onComplete={handleAnalysisComplete} onCancel={() => handleNavigate('creationHub')} />;
             handleNavigate('creationHub'); return null;
           case 'edit':
-            if (activePaper) return <Editor ref={setEditorRef} key={activePaper.id} paperData={activePaper} onSave={handleSavePaper} onSaveAndExit={handleExitEditor} onReady={() => setIsEditorReady(true)} />;
+            if (activePaper) return <Editor ref={setEditorRef} key={activePaper.id} paperData={activePaper} onSave={handleSavePaper} onSaveAndExit={handleExitEditor} onReady={() => setIsEditorMounted(true)} />;
             handleNavigate('myPapers'); return null;
           case 'myPapers':
             return <MyPapers user={currentUser} papers={papers} onEdit={handleEditPaper} onDelete={handleDeletePaper} onGenerateNew={() => handleNavigate('creationHub')} onRename={handleRenamePaper} onDuplicate={handleDuplicatePaper} />;
@@ -402,7 +400,7 @@ function App() {
             case 'attendedPapers':
                 return <AttendedPapers papers={attendedPapers} onViewPaper={handleViewAttendedPaper} />;
             case 'edit':
-                if (activePaper) return <Editor ref={setEditorRef} key={activePaper.id} paperData={activePaper} onSave={() => {}} onSaveAndExit={() => handleNavigate('studentDashboard')} onReady={() => setIsEditorReady(true)} />;
+                if (activePaper) return <Editor ref={setEditorRef} key={activePaper.id} paperData={activePaper} onSave={() => {}} onSaveAndExit={() => handleNavigate('studentDashboard')} onReady={() => setIsEditorMounted(true)} />;
                 handleNavigate('studentDashboard'); return null;
             case 'settings':
                 return <Settings user={currentUser} theme={theme} toggleTheme={toggleTheme} onLogout={handleLogout} />;

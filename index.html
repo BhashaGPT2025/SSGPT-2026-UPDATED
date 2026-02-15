@@ -117,33 +117,34 @@
       background: #64748b;
     }
 
-    /* --- KaTeX Fixes (CRITICAL) --- */
-    /* Fix fraction line overlap */
-    .katex .mfrac .frac-line {
-        border-bottom-width: 1px !important;
-        margin-top: 2px !important; 
+    /* --- KaTeX Fixes (CRITICAL for Fractions) --- */
+    .katex {
+        font-size: 1.1em !important;
+        line-height: 1.5 !important; /* Increase general line height for math */
     }
-    /* Ensure clear separation between numerator and denominator */
+    
+    /* Fraction line positioning */
+    .katex .mfrac .frac-line {
+        border-bottom-width: 1.5px !important; /* Make fraction bar slightly thicker */
+        margin-top: 3px !important;
+        margin-bottom: 3px !important;
+    }
+    
+    /* Spacing for numerator and denominator */
+    .katex .mfrac .vlist-t > span {
+        padding: 2px 0 !important;
+    }
+
+    /* Prevent numerator overlapping the line */
     .katex .mfrac .vlist-t2 {
         margin-top: 0.2em !important;
     }
-    /* General spacing for math */
-    .katex {
-        font-size: 1.15em !important;
-        line-height: 1.4 !important;
-        text-rendering: auto !important;
-    }
-    /* Prevent cutting off long equations */
+
+    /* Fix display mode margins */
     .katex-display {
+        margin: 1em 0 !important;
         overflow-x: auto;
         overflow-y: hidden;
-        padding: 0.5em 0;
-        margin: 0.5em 0 !important;
-    }
-    /* Ensure styles print correctly */
-    @media print {
-        .katex { font-size: 1em !important; }
-        .katex .mfrac .frac-line { border-bottom-color: #000 !important; }
     }
 
     /* --- Base Animations --- */

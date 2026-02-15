@@ -26,7 +26,7 @@ const triggerMathRendering = (element: HTMLElement | null) => {
                 {left: '\\[', right: '\\]', display: true}
             ], 
             throwOnError: false,
-            output: 'html', // Ensure HTML output for better canvas capture
+            output: 'html', 
             strict: false
         });
     } catch (err) {
@@ -63,13 +63,13 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     useEffect(() => {
         setEditingChat(createEditingChat(paperData));
         setCoEditorMessages([{ id: '1', sender: 'bot', text: "Paper formatting optimized for board standards. Ready for review." }]);
-        // Call onReady immediately to ensure Header mounts
+        // Important: Notify parent that editor is ready (fixing missing header bug)
         onReady();
     }, []);
 
     const paginate = useCallback(() => {
         const container = document.createElement('div');
-        container.style.width = `${A4_WIDTH_PX - 120}px`; // Proper A4 width margin
+        container.style.width = `${A4_WIDTH_PX - 120}px`; // Proper A4 width margin (60px each side)
         container.style.fontFamily = state.styles.fontFamily;
         container.style.position = 'absolute';
         container.style.left = '-9999px';
@@ -90,39 +90,42 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         const pages: string[] = [];
         let currentPageHtml = ""; 
         let currentHeight = 0;
-        const maxPageHeight = A4_HEIGHT_PX - 120; // 60px padding top/bottom
+        // Reduce effective height slightly to ensure no cut-offs at the very bottom
+        const maxPageHeight = A4_HEIGHT_PX - 140; // 70px padding top/bottom safety buffer
 
-        // Robust Fallback: If structured parsing yields no children, dump content as one page.
-        // This prevents the "blank paper" error if the HTML generator returns a single block.
-        if (children.length === 0 && htmlContent.trim().length > 0) {
-             pages.push(htmlContent);
-        } else {
-            children.forEach(child => {
-                const el = child as HTMLElement;
-                const style = window.getComputedStyle(el);
-                const marginTop = parseFloat(style.marginTop || '0');
-                const marginBottom = parseFloat(style.marginBottom || '0');
-                const elHeight = el.getBoundingClientRect().height + marginTop + marginBottom;
-                
-                if (currentHeight + elHeight > maxPageHeight && currentPageHtml) { 
-                    pages.push(currentPageHtml); 
-                    currentPageHtml = ""; 
-                    currentHeight = 0; 
-                }
-                
-                currentPageHtml += el.outerHTML; 
-                currentHeight += elHeight;
-            });
-            if (currentPageHtml) pages.push(currentPageHtml);
+        children.forEach((child) => {
+            const el = child as HTMLElement;
+            // Get precise height including margins
+            const style = window.getComputedStyle(el);
+            const marginTop = parseFloat(style.marginTop) || 0;
+            const marginBottom = parseFloat(style.marginBottom) || 0;
+            const elHeight = el.offsetHeight + marginTop + marginBottom;
+            
+            // Check if adding this element would overflow
+            if (currentHeight + elHeight > maxPageHeight && currentPageHtml.length > 0) { 
+                pages.push(currentPageHtml); 
+                currentPageHtml = ""; 
+                currentHeight = 0; 
+            }
+            
+            currentPageHtml += el.outerHTML; 
+            currentHeight += elHeight;
+        });
+        
+        if (currentPageHtml.length > 0) {
+            pages.push(currentPageHtml);
+        }
+
+        // If no pages were generated (empty content), show at least one blank page
+        if (pages.length === 0) {
+            pages.push('<div style="text-align:center; padding-top: 50px;">No content available.</div>');
         }
 
         document.body.removeChild(container);
+        setPagesHtml(pages);
         
-        // Final fallback if pages are still empty
-        setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px;">No content generated. Please try regenerating.</div>']);
-        
-        // Render Math only after DOM update
-        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
+        // Wait for React render cycle then trigger math
+        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 50);
     }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
 
     useEffect(() => {
@@ -146,24 +149,25 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
                 
-                // Do NOT call triggerMathRendering here. The view is already rendered.
-                // Re-triggering can mess up the DOM structure right before capture.
+                // CRITICAL: Do NOT re-trigger math rendering here. 
+                // The math is already rendered on screen. Re-triggering causes layout shifts/glitches.
                 
                 const canvas = await html2canvas(el, { 
-                    scale: 2.5, // Reduced slightly for better performance/reliability
+                    scale: 3, // Higher scale for better quality
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
                     allowTaint: true,
-                    imageTimeout: 0,
-                    // Fix layout shift issues during export
-                    windowWidth: el.scrollWidth,
-                    windowHeight: el.scrollHeight
+                    // Ensure the canvas captures the full height correctly
+                    windowHeight: el.scrollHeight,
+                    height: el.scrollHeight
                 });
                 
                 const imgData = canvas.toDataURL('image/png');
                 if (i > 0) pdf.addPage();
-                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH, undefined, 'SLOW');
+                
+                // Add image with slight buffer to avoid edge cutting
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
             }
             const suffix = isAnswerKeyMode ? '_Answer_Key' : '_Question_Paper';
             pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}${suffix}.pdf`);
