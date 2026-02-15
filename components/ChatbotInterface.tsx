@@ -83,9 +83,8 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   useEffect(() => {
     if (!process.env.API_KEY) return;
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    // Updated to stable model
     setChat(ai.chats.create({ 
-        model: 'gemini-flash-latest', 
+        model: 'gemini-3-pro-preview', 
         config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperTool] }] } 
     }));
     outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -123,7 +122,6 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const inputCtx = new AudioContext({ sampleRate: 16000 });
     
-    // Live model remains specific version as required by API
     sessionPromiseRef.current = ai.live.connect({
       model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       callbacks: {

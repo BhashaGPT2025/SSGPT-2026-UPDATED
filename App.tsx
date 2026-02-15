@@ -37,22 +37,13 @@ function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [papers, setPapers] = useState<QuestionPaperData[]>([]);
   const [attendedPapers, setAttendedPapers] = useState<QuestionPaperData[]>([]);
+  const [isEditorReady, setEditorReady] = useState<boolean>(false);
   const [authView, setAuthView] = useState<'public' | 'auth'>('public');
   const [textToAnalyze, setTextToAnalyze] = useState<string | null>(null);
   const [imagesToAnalyze, setImagesToAnalyze] = useState<Part[] | null>(null);
   const [publicPaper, setPublicPaper] = useState<QuestionPaperData | null>(null);
   
   const [selectedImageForEdit, setSelectedImageForEdit] = useState<UploadedImage | null>(null);
-
-  // Editor Ref Management
-  const editorRef = useRef<any>(null);
-  // Simple increment to force re-render when editor methods are bound
-  const [editorMountKey, setEditorMountKey] = useState(0);
-
-  const handleEditorReady = useCallback(() => {
-      // Force update when editor reports it's ready
-      setEditorMountKey(prev => prev + 1);
-  }, []);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('ssgpt-theme') as Theme;
@@ -281,6 +272,7 @@ function App() {
     setError(null);
     if (targetPage !== 'edit') {
         setActivePaper(null);
+        setEditorReady(false);
     }
     if (targetPage !== 'analyze') {
         setTextToAnalyze(null);
@@ -301,6 +293,8 @@ function App() {
     handleNavigate('analyze');
   };
   
+  const editorRef = React.useRef<any>(null);
+
   if (isAuthLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-white dark:bg-gray-950">
@@ -365,7 +359,7 @@ function App() {
             if (imagesToAnalyze) return <AnalysisScreen imagesToAnalyze={imagesToAnalyze} onComplete={handleAnalysisComplete} onCancel={() => handleNavigate('creationHub')} />;
             handleNavigate('creationHub'); return null;
           case 'edit':
-            if (activePaper) return <Editor ref={editorRef} key={activePaper.id} paperData={activePaper} onSave={handleSavePaper} onSaveAndExit={handleExitEditor} onReady={handleEditorReady} />;
+            if (activePaper) return <Editor ref={editorRef} key={activePaper.id} paperData={activePaper} onSave={handleSavePaper} onSaveAndExit={handleExitEditor} onReady={() => setEditorReady(true)} />;
             handleNavigate('myPapers'); return null;
           case 'myPapers':
             return <MyPapers user={currentUser} papers={papers} onEdit={handleEditPaper} onDelete={handleDeletePaper} onGenerateNew={() => handleNavigate('creationHub')} onRename={handleRenamePaper} onDuplicate={handleDuplicatePaper} />;
@@ -393,7 +387,7 @@ function App() {
             case 'attendedPapers':
                 return <AttendedPapers papers={attendedPapers} onViewPaper={handleViewAttendedPaper} />;
             case 'edit':
-                if (activePaper) return <Editor ref={editorRef} key={activePaper.id} paperData={activePaper} onSave={() => {}} onSaveAndExit={() => handleNavigate('studentDashboard')} onReady={handleEditorReady} />;
+                if (activePaper) return <Editor ref={editorRef} key={activePaper.id} paperData={activePaper} onSave={() => {}} onSaveAndExit={() => handleNavigate('studentDashboard')} onReady={() => setEditorReady(true)} />;
                 handleNavigate('studentDashboard'); return null;
             case 'settings':
                 return <Settings user={currentUser} theme={theme} toggleTheme={toggleTheme} onLogout={handleLogout} />;
@@ -407,8 +401,7 @@ function App() {
     return <div>Invalid user role.</div>
   };
 
-  const isEditorPage = page === 'edit';
-  const currentEditorActions = (isEditorPage && editorRef.current) ? {
+  const editorActions = (page === 'edit' && editorRef.current) ? {
       onSaveAndExit: editorRef.current.handleSaveAndExitClick,
       onExport: editorRef.current.openExportModal,
       onAnswerKey: editorRef.current.openAnswerKeyModal,
@@ -421,13 +414,15 @@ function App() {
       isAnswerKeyMode: editorRef.current.isAnswerKeyMode
   } : undefined;
 
+  const isEditorPage = page === 'edit';
+
   return (
     <div className={`min-h-screen text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300 ${isEditorPage ? 'flex flex-col h-screen' : ''}`}>
       {isEditorPage && (
           <Header
               page={page}
               onNavigate={handleNavigate}
-              editorActions={currentEditorActions} 
+              editorActions={editorActions} 
           />
       )}
       <AppLayout 

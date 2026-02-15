@@ -117,39 +117,6 @@
       background: #64748b;
     }
 
-    /* --- KaTeX Fixes (CRITICAL for Fractions) --- */
-    /* Force specific font sizing and line height to prevent overlap */
-    .katex {
-        font-size: 1.15em !important;
-        line-height: 1.6 !important;
-        text-rendering: auto !important;
-    }
-    
-    /* Improve fraction bar positioning */
-    .katex .mfrac .frac-line {
-        border-bottom-width: 1.5px !important;
-        margin-top: 3px !important;
-        margin-bottom: 3px !important;
-    }
-    
-    /* Ensure clear separation for denominator */
-    .katex .mfrac .vlist-t2 {
-        margin-top: 0.25em !important;
-    }
-    
-    /* Ensure clear separation for numerator */
-    .katex .mfrac .vlist-t > span {
-        padding-bottom: 2px !important;
-    }
-
-    /* Ensure display mode math has enough vertical space */
-    .katex-display {
-        overflow-x: auto;
-        overflow-y: hidden;
-        padding: 0.75em 0;
-        margin: 1em 0 !important;
-    }
-
     /* --- Base Animations --- */
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
@@ -220,6 +187,7 @@
         font-size: 1em;
         border: none;
     }
+    /* New styles for enhanced editor */
     .control-group summary::-webkit-details-marker {
         display: none;
     }
@@ -232,6 +200,7 @@
     .ribbon-button {
         @apply flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
     }
+    /* Chatbot UI Enhancements */
     @keyframes gradient-animation {
         0% { background-position: 0% 50%; }
         50% { background-position: 100% 50%; }
@@ -255,6 +224,7 @@
     .avatar-glowing {
         animation: avatar-glow 2s ease-in-out infinite;
     }
+    /* Print styles */
     @media print {
       body {
         background-color: #fff !important;

@@ -25,9 +25,7 @@ const triggerMathRendering = (element: HTMLElement | null) => {
                 {left: '\\(', right: '\\)', display: false},
                 {left: '\\[', right: '\\]', display: true}
             ], 
-            throwOnError: false,
-            strict: false,
-            trust: true
+            throwOnError: false 
         });
     } catch (err) {
         console.error("KaTeX render error:", err);
@@ -37,6 +35,7 @@ const triggerMathRendering = (element: HTMLElement | null) => {
 const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: QuestionPaperData) => void; onSaveAndExit: () => void; onReady: () => void; }>((props, ref) => {
     const { paperData, onSave, onSaveAndExit, onReady } = props;
     
+    // Fix: Explicitly typed state to resolve compatibility issues with branding updates and optional properties.
     const [state, setState] = useState<{
         paper: QuestionPaperData;
         styles: PaperStyles;
@@ -66,77 +65,57 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         onReady();
     }, []);
 
-    const paginate = useCallback(async () => {
+    const paginate = useCallback(() => {
         const container = document.createElement('div');
-        container.style.width = `${A4_WIDTH_PX}px`; 
+        container.style.width = `${A4_WIDTH_PX - 120}px`; // Proper A4 width margin
         container.style.fontFamily = state.styles.fontFamily;
         container.style.position = 'absolute';
         container.style.left = '-9999px';
         container.style.top = '0';
         container.style.visibility = 'hidden';
-        container.style.padding = '60px'; 
-        container.style.boxSizing = 'border-box';
-
+        
         const htmlContent = generateHtmlFromPaperData(state.paper, { 
             logoConfig: state.logo.src ? { src: state.logo.src, alignment: 'center' } : undefined,
             isAnswerKey: isAnswerKeyMode
         });
         
-        container.innerHTML = `<div id="paper-root">${htmlContent}</div>`;
+        container.innerHTML = htmlContent;
+        document.body.appendChild(container);
         
-        // Wait for math to render in hidden container before measuring
-        await new Promise<void>(resolve => {
-            document.body.appendChild(container);
-            triggerMathRendering(container);
-            setTimeout(() => resolve(), 100); // Allow time for DOM reflow after KaTeX
-        });
-        
-        const contentRoot = container.querySelector('#paper-root');
+        const contentRoot = container.querySelector('#paper-root') || container.children[0];
         const children = Array.from(contentRoot?.children || []);
+        
         const pages: string[] = [];
         let currentPageHtml = ""; 
         let currentHeight = 0;
-        const maxContentHeight = A4_HEIGHT_PX - 120; 
+        const maxPageHeight = A4_HEIGHT_PX - 120; // 60px padding top/bottom
 
-        if (children.length > 0) {
-            children.forEach((child) => {
-                const el = child as HTMLElement;
-                const style = window.getComputedStyle(el);
-                const marginTop = parseFloat(style.marginTop) || 0;
-                const marginBottom = parseFloat(style.marginBottom) || 0;
-                const elHeight = el.offsetHeight + marginTop + marginBottom;
-                
-                if (currentHeight > 0 && currentHeight + elHeight > maxContentHeight) {
-                    pages.push(currentPageHtml);
-                    currentPageHtml = "";
-                    currentHeight = 0;
-                }
-                
-                currentPageHtml += el.outerHTML; 
-                currentHeight += elHeight;
-            });
+        children.forEach(child => {
+            const el = child as HTMLElement;
+            const style = window.getComputedStyle(el);
+            const marginTop = parseFloat(style.marginTop || '0');
+            const marginBottom = parseFloat(style.marginBottom || '0');
+            const elHeight = el.getBoundingClientRect().height + marginTop + marginBottom;
             
-            if (currentPageHtml) {
-                pages.push(currentPageHtml);
+            if (currentHeight + elHeight > maxPageHeight && currentPageHtml) { 
+                pages.push(currentPageHtml); 
+                currentPageHtml = ""; 
+                currentHeight = 0; 
             }
-        }
+            
+            currentPageHtml += el.outerHTML; 
+            currentHeight += elHeight;
+        });
 
+        if (currentPageHtml) pages.push(currentPageHtml);
         document.body.removeChild(container);
+        setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px;">Processing Paper...</div>']);
         
-        // Failsafe: if pagination produces no pages, show all content on one page
-        if (pages.length === 0 && htmlContent.length > 0) {
-            setPagesHtml([htmlContent]);
-        } else {
-            setPagesHtml(pages);
-        }
-        
+        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
     }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
 
     useEffect(() => {
-        paginate().then(() => {
-            // After state is updated and pages are in DOM, render math visibly
-            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
-        });
+        paginate();
     }, [paginate]);
 
     const handleExportPDF = async () => {
@@ -149,35 +128,32 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page-content');
             
             if (!pageElements || pageElements.length === 0) {
-                alert("Nothing to export. Please wait for the paper to render.");
-                setIsExporting(false);
+                alert("Nothing to export.");
                 return;
             }
             
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
+                triggerMathRendering(el);
                 
                 const canvas = await html2canvas(el, { 
-                    scale: 2, 
+                    scale: 3.5, 
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
                     allowTaint: true,
-                    height: el.scrollHeight, 
-                    windowHeight: el.scrollHeight
+                    imageTimeout: 0
                 });
                 
                 const imgData = canvas.toDataURL('image/png');
                 if (i > 0) pdf.addPage();
-                
-                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH, undefined, 'SLOW');
             }
-            
             const suffix = isAnswerKeyMode ? '_Answer_Key' : '_Question_Paper';
             pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}${suffix}.pdf`);
         } catch (error) {
             console.error("PDF Export Error:", error);
-            alert("Internal Error Occurred during export. Please check console.");
+            alert("Internal Error Occurred during export.");
         } finally {
             setIsExporting(false);
         }
@@ -191,6 +167,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const res = await getAiEditResponse(editingChat, msg);
             if (res.text) {
                 setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Updated." }]);
+                setTimeout(() => triggerMathRendering(document.querySelector('.chat-scrollbar')), 100);
             }
         } catch (e) { console.error(e); }
         finally { setIsCoEditorTyping(false); }
@@ -241,10 +218,10 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             </div>
             <main className="flex-1 overflow-auto p-8 bg-slate-300 dark:bg-slate-950/20" ref={pagesContainerRef}>
                 {pagesHtml.map((html, i) => (
-                    <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-10 relative" 
+                    <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-10 relative overflow-hidden" 
                         style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX }}>
                         <div className="paper-page-content prose max-w-none p-[60px]" 
-                             style={{ fontFamily: state.styles.fontFamily, height: '100%', background: 'white' }} 
+                             style={{ fontFamily: state.styles.fontFamily, minHeight: '100%', background: 'white' }} 
                              dangerouslySetInnerHTML={{ __html: html }} />
                     </div>
                 ))}
