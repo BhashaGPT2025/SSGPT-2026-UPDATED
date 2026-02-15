@@ -1,6 +1,6 @@
 import { type QuestionPaperData, type Question, QuestionType } from '../types';
 
-const escapeHtml = (unsafe: string | undefined): string => {
+const escapeHtml = (unsafe: string | undefined | null): string => {
     if (typeof unsafe !== 'string') return '';
     return unsafe
         .replace(/&/g, "&amp;")
@@ -11,7 +11,8 @@ const escapeHtml = (unsafe: string | undefined): string => {
 }
 
 const formatText = (text: string = ''): string => {
-    return text.trim().replace(/\n/g, '<br/>');
+    const escaped = escapeHtml(text);
+    return escaped.trim().replace(/\n/g, '<br/>');
 };
 
 const toRoman = (num: number): string => {
@@ -32,16 +33,16 @@ const renderOptions = (question: Question): string => {
         if (options.length >= 4) {
             return `<table style="width: 100%; border-collapse: collapse; margin-top: 8px; table-layout: fixed; font-family: inherit;"><tbody>
                     <tr>
-                        <td style="width: 50%; vertical-align: top; padding: 4px 10px 4px 0; font-size: 1.05em;">(a) ${formatText(options[0])}</td>
-                        <td style="width: 50%; vertical-align: top; padding: 4px 0 4px 10px; font-size: 1.05em;">(b) ${formatText(options[1])}</td>
+                        <td style="width: 50%; vertical-align: top; padding: 4px 10px 4px 0; font-size: 1.05em; line-height: 1.8;">(a) ${formatText(options[0])}</td>
+                        <td style="width: 50%; vertical-align: top; padding: 4px 0 4px 10px; font-size: 1.05em; line-height: 1.8;">(b) ${formatText(options[1])}</td>
                     </tr>
                     <tr>
-                        <td style="width: 50%; vertical-align: top; padding: 4px 10px 4px 0; font-size: 1.05em;">(c) ${formatText(options[2])}</td>
-                        <td style="width: 50%; vertical-align: top; padding: 4px 0 4px 10px; font-size: 1.05em;">(d) ${formatText(options[3])}</td>
+                        <td style="width: 50%; vertical-align: top; padding: 4px 10px 4px 0; font-size: 1.05em; line-height: 1.8;">(c) ${formatText(options[2])}</td>
+                        <td style="width: 50%; vertical-align: top; padding: 4px 0 4px 10px; font-size: 1.05em; line-height: 1.8;">(d) ${formatText(options[3])}</td>
                     </tr>
                 </tbody></table>`;
         }
-        return `<div style="margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 1.05em;">
+        return `<div style="margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 1.05em; line-height: 1.8;">
             ${options.map((opt, i) => `<div style="break-inside: avoid;">(${String.fromCharCode(97 + i)}) ${formatText(opt)}</div>`).join('')}
         </div>`;
     } else if (question.type === QuestionType.MatchTheFollowing) {
@@ -63,8 +64,8 @@ const renderOptions = (question: Question): string => {
 
         const rows = colA.map((item, index) => `
             <tr>
-                <td style="padding: 8px; border: 1px solid #000; width: 50%; vertical-align: middle; font-size: 1em;">(${index + 1}) ${formatText(item)}</td>
-                <td style="padding: 8px; border: 1px solid #000; width: 50%; vertical-align: middle; font-size: 1em;">${colB[index] ? `(${String.fromCharCode(97 + index)}) ${formatText(colB[index])}` : ''}</td>
+                <td style="padding: 8px; border: 1px solid #000; width: 50%; vertical-align: middle; font-size: 1em; line-height: 1.7;">(${index + 1}) ${formatText(item)}</td>
+                <td style="padding: 8px; border: 1px solid #000; width: 50%; vertical-align: middle; font-size: 1em; line-height: 1.7;">${colB[index] ? `(${String.fromCharCode(97 + index)}) ${formatText(colB[index])}` : ''}</td>
             </tr>
         `).join('');
 
@@ -85,7 +86,7 @@ const renderOptions = (question: Question): string => {
 const renderQuestion = (question: Question, isAnswerKey: boolean): string => {
     const optionsHtml = renderOptions(question);
     const answerHtml = isAnswerKey ? `
-        <div style="margin-top: 8px; padding: 8px; background-color: #f8fafc; border-left: 4px solid #334155; border-radius: 2px; font-size: 1em; break-inside: avoid;">
+        <div style="margin-top: 8px; padding: 8px; background-color: #f8fafc; border-left: 4px solid #334155; border-radius: 2px; font-size: 1em; break-inside: avoid; line-height: 1.7;">
             <strong style="color: #334155; text-transform: uppercase; font-size: 0.75em;">Solution:</strong>
             <div style="margin-top: 2px;">${formatText(typeof question.answer === 'string' ? question.answer : JSON.stringify(question.answer))}</div>
         </div>
@@ -95,9 +96,9 @@ const renderQuestion = (question: Question, isAnswerKey: boolean): string => {
             <table style="width: 100%; border-collapse: collapse;">
                 <tbody>
                     <tr>
-                        <td style="vertical-align: top; width: 30px; font-weight: bold; font-size: 1.1em;">${question.questionNumber}.</td>
-                        <td style="vertical-align: top; text-align: left; line-height: 1.5; font-size: 1.1em; padding-right: 10px;">${formatText(question.questionText)}</td>
-                        <td style="vertical-align: top; text-align: right; width: 60px; font-weight: bold; font-size: 1em;">[${question.marks}]</td>
+                        <td style="vertical-align: top; width: 30px; font-weight: bold; font-size: 1.1em; line-height: 1.8;">${question.questionNumber}.</td>
+                        <td style="vertical-align: top; text-align: left; line-height: 1.8; font-size: 1.1em; padding-right: 10px;">${formatText(question.questionText)}</td>
+                        <td style="vertical-align: top; text-align: right; width: 60px; font-weight: bold; font-size: 1em; line-height: 1.8;">[${question.marks}]</td>
                     </tr>
                 </tbody>
             </table>

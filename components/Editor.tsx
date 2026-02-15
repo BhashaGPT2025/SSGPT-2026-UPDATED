@@ -15,27 +15,37 @@ import { SpinnerIcon } from './icons/SpinnerIcon';
 const A4_WIDTH_PX = 794; 
 const A4_HEIGHT_PX = 1123;
 
-const triggerMathRendering = (element: HTMLElement | null) => {
-    if (!element || !(window as any).renderMathInElement) return;
-    try {
-        (window as any).renderMathInElement(element, { 
-            delimiters: [
-                {left: '$$', right: '$$', display: true},
-                {left: '$', right: '$', display: false},
-                {left: '\\(', right: '\\)', display: false},
-                {left: '\\[', right: '\\]', display: true}
-            ], 
-            throwOnError: false 
-        });
-    } catch (err) {
-        console.error("KaTeX render error:", err);
-    }
+const triggerMathRendering = (element: HTMLElement | null): Promise<void> => {
+    return new Promise((resolve) => {
+        if (!element || !(window as any).renderMathInElement) {
+            resolve();
+            return;
+        }
+        try {
+            (window as any).renderMathInElement(element, { 
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\(', right: '\\)', display: false},
+                    {left: '\\[', right: '\\]', display: true}
+                ], 
+                throwOnError: false,
+                // Add a callback to resolve the promise when rendering is complete.
+                // This is a conceptual addition; auto-render doesn't have a direct callback.
+                // We'll use a timeout as a practical fallback.
+            });
+        } catch (err) {
+            console.error("KaTeX render error:", err);
+        }
+        // Since KaTeX auto-render is synchronous but DOM updates may not be,
+        // a short timeout helps ensure layout is calculated.
+        setTimeout(resolve, 50);
+    });
 };
 
 const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: QuestionPaperData) => void; onSaveAndExit: () => void; onReady: () => void; }>((props, ref) => {
     const { paperData, onSave, onSaveAndExit, onReady } = props;
     
-    // Fix: Explicitly typed state to resolve compatibility issues with branding updates and optional properties.
     const [state, setState] = useState<{
         paper: QuestionPaperData;
         styles: PaperStyles;
@@ -65,24 +75,30 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         onReady();
     }, []);
 
-    const paginate = useCallback(() => {
+    const paginate = useCallback(async () => {
         const container = document.createElement('div');
-        container.style.width = `${A4_WIDTH_PX - 120}px`; // Proper A4 width margin
+        container.style.width = `${A4_WIDTH_PX}px`; 
         container.style.fontFamily = state.styles.fontFamily;
         container.style.position = 'absolute';
         container.style.left = '-9999px';
         container.style.top = '0';
-        container.style.visibility = 'hidden';
-        
+        container.style.visibility = 'hidden'; // Keep it in the layout tree for measurement
+        container.style.padding = '60px'; 
+        container.style.boxSizing = 'border-box';
+        container.style.background = 'white';
+
         const htmlContent = generateHtmlFromPaperData(state.paper, { 
             logoConfig: state.logo.src ? { src: state.logo.src, alignment: 'center' } : undefined,
             isAnswerKey: isAnswerKeyMode
         });
         
-        container.innerHTML = htmlContent;
+        container.innerHTML = `<div id="paper-root">${htmlContent}</div>`;
         document.body.appendChild(container);
+
+        // CRITICAL FIX: Render math in the hidden container BEFORE measuring.
+        await triggerMathRendering(container);
         
-        const contentRoot = container.querySelector('#paper-root') || container.children[0];
+        const contentRoot = container.querySelector('#paper-root');
         const children = Array.from(contentRoot?.children || []);
         
         const pages: string[] = [];
@@ -95,9 +111,10 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const style = window.getComputedStyle(el);
             const marginTop = parseFloat(style.marginTop || '0');
             const marginBottom = parseFloat(style.marginBottom || '0');
-            const elHeight = el.getBoundingClientRect().height + marginTop + marginBottom;
+            // Use offsetHeight for a more reliable measurement after rendering.
+            const elHeight = el.offsetHeight + marginTop + marginBottom;
             
-            if (currentHeight + elHeight > maxPageHeight && currentPageHtml) { 
+            if (currentHeight > 0 && currentHeight + elHeight > maxPageHeight) { 
                 pages.push(currentPageHtml); 
                 currentPageHtml = ""; 
                 currentHeight = 0; 
@@ -109,13 +126,20 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
         if (currentPageHtml) pages.push(currentPageHtml);
         document.body.removeChild(container);
-        setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px;">Processing Paper...</div>']);
+
+        if (pages.length === 0 && htmlContent) {
+            setPagesHtml([htmlContent]); // Failsafe
+        } else {
+            setPagesHtml(pages);
+        }
         
-        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
     }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
 
     useEffect(() => {
-        paginate();
+        paginate().then(() => {
+            // After state is updated with correct pages, render math visibly.
+            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
+        });
     }, [paginate]);
 
     const handleExportPDF = async () => {
@@ -129,25 +153,24 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             
             if (!pageElements || pageElements.length === 0) {
                 alert("Nothing to export.");
+                setIsExporting(false);
                 return;
             }
             
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
-                triggerMathRendering(el);
                 
                 const canvas = await html2canvas(el, { 
-                    scale: 3.5, 
+                    scale: 2, // Use a reasonable scale for quality vs performance
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
                     allowTaint: true,
-                    imageTimeout: 0
                 });
                 
                 const imgData = canvas.toDataURL('image/png');
                 if (i > 0) pdf.addPage();
-                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH, undefined, 'SLOW');
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
             }
             const suffix = isAnswerKeyMode ? '_Answer_Key' : '_Question_Paper';
             pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}${suffix}.pdf`);
@@ -218,10 +241,10 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             </div>
             <main className="flex-1 overflow-auto p-8 bg-slate-300 dark:bg-slate-950/20" ref={pagesContainerRef}>
                 {pagesHtml.map((html, i) => (
-                    <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-10 relative overflow-hidden" 
-                        style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX }}>
+                    <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-10 relative" 
+                        style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX, overflow: 'hidden' }}>
                         <div className="paper-page-content prose max-w-none p-[60px]" 
-                             style={{ fontFamily: state.styles.fontFamily, minHeight: '100%', background: 'white' }} 
+                             style={{ fontFamily: state.styles.fontFamily, height: '100%', background: 'white' }} 
                              dangerouslySetInnerHTML={{ __html: html }} />
                     </div>
                 ))}

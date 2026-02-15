@@ -37,13 +37,20 @@ function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [papers, setPapers] = useState<QuestionPaperData[]>([]);
   const [attendedPapers, setAttendedPapers] = useState<QuestionPaperData[]>([]);
-  const [isEditorReady, setEditorReady] = useState<boolean>(false);
   const [authView, setAuthView] = useState<'public' | 'auth'>('public');
   const [textToAnalyze, setTextToAnalyze] = useState<string | null>(null);
   const [imagesToAnalyze, setImagesToAnalyze] = useState<Part[] | null>(null);
   const [publicPaper, setPublicPaper] = useState<QuestionPaperData | null>(null);
   
   const [selectedImageForEdit, setSelectedImageForEdit] = useState<UploadedImage | null>(null);
+
+  const editorRef = useRef<any>(null);
+  // A simple state to force re-render when the editor is ready, ensuring the ref is connected.
+  const [editorReadyKey, setEditorReadyKey] = useState(0);
+
+  const handleEditorReady = useCallback(() => {
+    setEditorReadyKey(prev => prev + 1);
+  }, []);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('ssgpt-theme') as Theme;
@@ -272,7 +279,6 @@ function App() {
     setError(null);
     if (targetPage !== 'edit') {
         setActivePaper(null);
-        setEditorReady(false);
     }
     if (targetPage !== 'analyze') {
         setTextToAnalyze(null);
@@ -293,8 +299,6 @@ function App() {
     handleNavigate('analyze');
   };
   
-  const editorRef = React.useRef<any>(null);
-
   if (isAuthLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-white dark:bg-gray-950">
@@ -359,7 +363,7 @@ function App() {
             if (imagesToAnalyze) return <AnalysisScreen imagesToAnalyze={imagesToAnalyze} onComplete={handleAnalysisComplete} onCancel={() => handleNavigate('creationHub')} />;
             handleNavigate('creationHub'); return null;
           case 'edit':
-            if (activePaper) return <Editor ref={editorRef} key={activePaper.id} paperData={activePaper} onSave={handleSavePaper} onSaveAndExit={handleExitEditor} onReady={() => setEditorReady(true)} />;
+            if (activePaper) return <Editor ref={editorRef} key={activePaper.id} paperData={activePaper} onSave={handleSavePaper} onSaveAndExit={handleExitEditor} onReady={handleEditorReady} />;
             handleNavigate('myPapers'); return null;
           case 'myPapers':
             return <MyPapers user={currentUser} papers={papers} onEdit={handleEditPaper} onDelete={handleDeletePaper} onGenerateNew={() => handleNavigate('creationHub')} onRename={handleRenamePaper} onDuplicate={handleDuplicatePaper} />;
@@ -387,7 +391,7 @@ function App() {
             case 'attendedPapers':
                 return <AttendedPapers papers={attendedPapers} onViewPaper={handleViewAttendedPaper} />;
             case 'edit':
-                if (activePaper) return <Editor ref={editorRef} key={activePaper.id} paperData={activePaper} onSave={() => {}} onSaveAndExit={() => handleNavigate('studentDashboard')} onReady={() => setEditorReady(true)} />;
+                if (activePaper) return <Editor ref={editorRef} key={activePaper.id} paperData={activePaper} onSave={() => {}} onSaveAndExit={() => handleNavigate('studentDashboard')} onReady={handleEditorReady} />;
                 handleNavigate('studentDashboard'); return null;
             case 'settings':
                 return <Settings user={currentUser} theme={theme} toggleTheme={toggleTheme} onLogout={handleLogout} />;
@@ -420,6 +424,7 @@ function App() {
     <div className={`min-h-screen text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300 ${isEditorPage ? 'flex flex-col h-screen' : ''}`}>
       {isEditorPage && (
           <Header
+              key={editorReadyKey}
               page={page}
               onNavigate={handleNavigate}
               editorActions={editorActions} 
