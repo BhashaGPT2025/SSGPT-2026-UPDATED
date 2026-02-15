@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { GoogleGenAI, Chat, FunctionDeclaration, Type, LiveServerMessage, Modality, Blob, Part, GenerateContentResponse } from "@google/genai";
-import { type FormData, QuestionType, Difficulty, Taxonomy, type VoiceOption } from '../types';
+import { type FormData, QuestionType, Difficulty, Taxonomy, type VoiceOption, type QuestionDistributionItem } from '../types';
 import { generateChatResponseStream, generateTextToSpeech } from '../services/geminiService';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 import { AttachmentIcon } from './icons/AttachmentIcon';
@@ -92,6 +92,32 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
+  // Fix: Added a helper function to safely construct FormData from AI function call arguments.
+  const handleTriggerGeneration = (args: Record<string, unknown>) => {
+    const toolArgs = args as any; // Cast to any for easier property access
+    const questionDistribution: QuestionDistributionItem[] = (toolArgs.questionDistribution || []).map((item: any, index: number) => ({
+        ...item,
+        id: `dist-${Date.now()}-${index}`
+    }));
+
+    const totalMarks = questionDistribution.reduce((acc, item) => acc + (item.count * item.marks), 0);
+    
+    const formData: FormData = {
+      schoolName: toolArgs.schoolName || '',
+      className: toolArgs.className || '',
+      subject: toolArgs.subject || '',
+      topics: toolArgs.topics || '',
+      language: toolArgs.language || 'English',
+      timeAllowed: toolArgs.timeAllowed || '',
+      sourceMaterials: toolArgs.sourceMaterials || '',
+      sourceMode: toolArgs.sourceMode || 'reference',
+      questionDistribution: questionDistribution,
+      totalMarks: totalMarks,
+    };
+
+    onGenerate(formData);
+  };
+
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isBotTyping || !chat) return;
     setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'user', text }]);
@@ -108,7 +134,8 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
           setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: fullText } : m));
         }
         if (chunk.functionCalls?.length) {
-            onGenerate(chunk.functionCalls[0].args as FormData);
+            // Fix: Replaced direct unsafe cast with the handleTriggerGeneration helper function.
+            handleTriggerGeneration(chunk.functionCalls[0].args);
         }
       }
     } catch (e) { console.error(e); }
@@ -151,7 +178,8 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
             source.onended = () => sourcesRef.current.delete(source);
           }
           if (message.toolCall?.functionCalls?.length) {
-              onGenerate(message.toolCall.functionCalls[0].args as FormData);
+              // Fix: Replaced direct unsafe cast with the handleTriggerGeneration helper function.
+              handleTriggerGeneration(message.toolCall.functionCalls[0].args);
               endLiveSession();
           }
         },

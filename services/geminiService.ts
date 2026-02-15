@@ -47,7 +47,7 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
     Use LaTeX with double backslashes for any math.`;
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-3-pro-preview",
+            model: "gemini-3-flash-preview",
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
@@ -62,7 +62,7 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles, modelQuality } = formData;
     
-    const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-flash-latest';
+    const modelToUse = modelQuality === 'pro' ? 'gemini-3-flash-preview' : 'gemini-flash-latest';
 
     const finalPrompt = `
 You are a Senior Academic Examiner. Your task is to generate a high-quality, professional examination paper in JSON format.
@@ -172,7 +172,7 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     return ai.chats.create({
-        model: "gemini-3-pro-preview",
+        model: "gemini-3-flash-preview",
         config: {
             systemInstruction: `You are an expert academic editor.
             STRICT MATH: Use professional LaTeX with double backslashes inside JSON. 
@@ -212,7 +212,7 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
-        model: "gemini-3-pro-preview",
+        model: "gemini-3-flash-preview",
         contents: `Analyze this content into JSON for a question paper. Math MUST be LaTeX with DOUBLE backslashes. Text: ${text}`,
         config: { responseMimeType: "application/json" }
     });

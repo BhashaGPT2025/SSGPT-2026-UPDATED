@@ -57,7 +57,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     try {
       if (!process.env.API_KEY) throw new Error("API_KEY is not configured.");
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const newChat = ai.chats.create({ model: 'gemini-2.5-flash-lite', config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperFunctionDeclaration] }] } });
+      const newChat = ai.chats.create({ model: 'gemini-flash-lite-latest', config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperFunctionDeclaration] }] } });
       setChat(newChat);
       const importedFilesRaw = sessionStorage.getItem('ssgpt_imported_files');
       if (!importedFilesRaw) {
