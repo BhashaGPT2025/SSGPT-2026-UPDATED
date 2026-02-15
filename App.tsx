@@ -44,15 +44,14 @@ function App() {
   
   const [selectedImageForEdit, setSelectedImageForEdit] = useState<UploadedImage | null>(null);
 
-  // Editor Ref Management - Fixed disappearing menu issue
+  // Editor Ref Management
   const editorRef = useRef<any>(null);
-  // State to force re-render when editor mounts
-  const [editorReadyState, setEditorReadyState] = useState(0);
+  // Simple increment to force re-render when editor methods are bound
+  const [editorMountKey, setEditorMountKey] = useState(0);
 
-  // Callback ref is critical here to notify parent immediately when Editor component mounts/unmounts
-  const setEditorRef = useCallback((node: any) => {
-      editorRef.current = node;
-      setEditorReadyState(prev => prev + 1);
+  const handleEditorReady = useCallback(() => {
+      // Force update when editor reports it's ready
+      setEditorMountKey(prev => prev + 1);
   }, []);
 
   useEffect(() => {
@@ -366,8 +365,7 @@ function App() {
             if (imagesToAnalyze) return <AnalysisScreen imagesToAnalyze={imagesToAnalyze} onComplete={handleAnalysisComplete} onCancel={() => handleNavigate('creationHub')} />;
             handleNavigate('creationHub'); return null;
           case 'edit':
-            // Added key prop to force re-mounting when paper changes
-            if (activePaper) return <Editor ref={setEditorRef} key={activePaper.id} paperData={activePaper} onSave={handleSavePaper} onSaveAndExit={handleExitEditor} onReady={() => setEditorReadyState(p => p+1)} />;
+            if (activePaper) return <Editor ref={editorRef} key={activePaper.id} paperData={activePaper} onSave={handleSavePaper} onSaveAndExit={handleExitEditor} onReady={handleEditorReady} />;
             handleNavigate('myPapers'); return null;
           case 'myPapers':
             return <MyPapers user={currentUser} papers={papers} onEdit={handleEditPaper} onDelete={handleDeletePaper} onGenerateNew={() => handleNavigate('creationHub')} onRename={handleRenamePaper} onDuplicate={handleDuplicatePaper} />;
@@ -395,7 +393,7 @@ function App() {
             case 'attendedPapers':
                 return <AttendedPapers papers={attendedPapers} onViewPaper={handleViewAttendedPaper} />;
             case 'edit':
-                if (activePaper) return <Editor ref={setEditorRef} key={activePaper.id} paperData={activePaper} onSave={() => {}} onSaveAndExit={() => handleNavigate('studentDashboard')} onReady={() => setEditorReadyState(p => p+1)} />;
+                if (activePaper) return <Editor ref={editorRef} key={activePaper.id} paperData={activePaper} onSave={() => {}} onSaveAndExit={() => handleNavigate('studentDashboard')} onReady={handleEditorReady} />;
                 handleNavigate('studentDashboard'); return null;
             case 'settings':
                 return <Settings user={currentUser} theme={theme} toggleTheme={toggleTheme} onLogout={handleLogout} />;

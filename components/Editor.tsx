@@ -68,72 +68,80 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     }, []);
 
     const paginate = useCallback(() => {
-        // Create a hidden staging area to render content and measure heights
+        // Create a hidden staging area to render content and measure heights accurately
         const container = document.createElement('div');
-        container.style.width = `${A4_WIDTH_PX - 120}px`; // 60px padding on each side
+        // Match the width and padding of the actual page
+        container.style.width = `${A4_WIDTH_PX}px`; 
         container.style.fontFamily = state.styles.fontFamily;
         container.style.position = 'absolute';
         container.style.left = '-9999px';
         container.style.top = '0';
-        container.style.visibility = 'hidden';
+        container.style.backgroundColor = 'white'; // Ensure background helps with readability debugging if inspected
         
+        // IMPORTANT: Add padding to container to match page content padding for accurate height calculation
+        container.style.padding = '60px'; 
+        container.style.boxSizing = 'border-box';
+
         const htmlContent = generateHtmlFromPaperData(state.paper, { 
             logoConfig: state.logo.src ? { src: state.logo.src, alignment: 'center' } : undefined,
             isAnswerKey: isAnswerKeyMode
         });
         
-        container.innerHTML = htmlContent;
+        // Wrap in a div to ensure children are captured correctly
+        container.innerHTML = `<div id="paper-root">${htmlContent}</div>`;
         document.body.appendChild(container);
         
+        // Get the inner wrapper we just created
         const contentRoot = container.querySelector('#paper-root') || container.children[0];
+        // Get strict array of children to iterate (Sections, Headers, Question Blocks)
         const children = Array.from(contentRoot?.children || []);
         
         const pages: string[] = [];
         let currentPageHtml = ""; 
         let currentHeight = 0;
-        // Conservative page height to prevent clipping
-        const maxPageHeight = A4_HEIGHT_PX - 140; // ~70px padding top/bottom
+        // Height available for content = A4 Height - (Top Padding + Bottom Padding)
+        const maxContentHeight = A4_HEIGHT_PX - 120; 
 
-        // Iterate through all blocks (headers, sections, questions)
-        for (const child of children) {
-            const el = child as HTMLElement;
-            // Force a layout calc
-            const height = el.getBoundingClientRect().height;
-            const style = window.getComputedStyle(el);
-            const marginY = parseFloat(style.marginTop) + parseFloat(style.marginBottom);
-            const totalHeight = height + marginY;
-
-            // If an element is taller than a single page, we have to let it flow/clip 
-            // OR put it on a new page and hope for best. 
-            // Here, we check if it fits on CURRENT page.
-            if (currentHeight + totalHeight > maxPageHeight) {
-                // If the current page is not empty, push it and start a new one
-                if (currentPageHtml.length > 0) {
-                    pages.push(currentPageHtml);
-                    currentPageHtml = "";
-                    currentHeight = 0;
-                }
-            }
-            
-            currentPageHtml += el.outerHTML; 
-            currentHeight += totalHeight;
-        }
-        
-        // Push the last page if it has content
-        if (currentPageHtml.length > 0) {
-            pages.push(currentPageHtml);
-        }
-
-        // Failsafe: If for some reason we have 0 pages but have content, dump it all in one page
-        // This handles cases where height calcs might fail completely
-        if (pages.length === 0 && htmlContent.length > 0) {
+        if (children.length === 0) {
+            // Fallback if structure parsing fails, just dump content
             pages.push(htmlContent);
+        } else {
+            children.forEach((child) => {
+                const el = child as HTMLElement;
+                // Get precise height including margins using getBoundingClientRect
+                const rect = el.getBoundingClientRect();
+                const style = window.getComputedStyle(el);
+                const marginTop = parseFloat(style.marginTop) || 0;
+                const marginBottom = parseFloat(style.marginBottom) || 0;
+                const elHeight = rect.height + marginTop + marginBottom;
+                
+                // If the element alone is taller than a page (rare for questions, possible for massive text blocks)
+                // We just let it overflow or clip for now to avoid infinite loops, but warn.
+                
+                // If adding this element exceeds the page height
+                if (currentHeight + elHeight > maxContentHeight) {
+                    // Push current page if it has content
+                    if (currentPageHtml.length > 0) {
+                        pages.push(currentPageHtml);
+                        currentPageHtml = "";
+                        currentHeight = 0;
+                    }
+                }
+                
+                currentPageHtml += el.outerHTML; 
+                currentHeight += elHeight;
+            });
+            
+            // Push the final page
+            if (currentPageHtml.length > 0) {
+                pages.push(currentPageHtml);
+            }
         }
 
         document.body.removeChild(container);
-        setPagesHtml(pages);
+        setPagesHtml(pages.length > 0 ? pages : [htmlContent]);
         
-        // Wait for React to render the pages, then trigger math
+        // Trigger Math Rendering after state update
         setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
     }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
 
@@ -151,21 +159,21 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page-content');
             
             if (!pageElements || pageElements.length === 0) {
-                alert("Nothing to export. Please try regenerating.");
+                alert("Nothing to export. Please wait for the paper to render.");
                 return;
             }
             
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
                 
-                // Use html2canvas with specific settings for best text clarity
+                // Use html2canvas with settings optimized for text clarity
                 const canvas = await html2canvas(el, { 
-                    scale: 2, // Good balance of quality and file size
+                    scale: 2, 
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
                     allowTaint: true,
-                    // Ensure full height is captured even if scrolled
+                    // Capture full scroll height to avoid cut-offs if content slightly overflows
                     height: el.scrollHeight, 
                     windowHeight: el.scrollHeight
                 });
@@ -173,7 +181,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 const imgData = canvas.toDataURL('image/png');
                 if (i > 0) pdf.addPage();
                 
-                // Add image to PDF exactly fitting the A4 dimensions
+                // Add image to PDF with a tiny margin of safety or exact fit
                 pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
             }
             
@@ -195,8 +203,6 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const res = await getAiEditResponse(editingChat, msg);
             if (res.text) {
                 setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Updated." }]);
-                // Trigger formatting update manually if needed, or rely on effect
-                // paginate(); 
             }
         } catch (e) { console.error(e); }
         finally { setIsCoEditorTyping(false); }
@@ -247,8 +253,8 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             </div>
             <main className="flex-1 overflow-auto p-8 bg-slate-300 dark:bg-slate-950/20" ref={pagesContainerRef}>
                 {pagesHtml.map((html, i) => (
-                    <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-10 relative overflow-hidden" 
-                        style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX }}>
+                    <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-10 relative" 
+                        style={{ width: A4_WIDTH_PX, minHeight: A4_HEIGHT_PX }}>
                         <div className="paper-page-content prose max-w-none p-[60px]" 
                              style={{ fontFamily: state.styles.fontFamily, minHeight: '100%', background: 'white' }} 
                              dangerouslySetInnerHTML={{ __html: html }} />
