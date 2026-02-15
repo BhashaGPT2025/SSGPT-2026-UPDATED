@@ -1,6 +1,6 @@
 import { type QuestionPaperData, type Question, QuestionType } from '../types';
 
-const escapeHtml = (unsafe: string | undefined): string => {
+const escapeHtml = (unsafe: string | undefined | null): string => {
     if (typeof unsafe !== 'string') return '';
     return unsafe
         .replace(/&/g, "&amp;")
@@ -11,8 +11,10 @@ const escapeHtml = (unsafe: string | undefined): string => {
 }
 
 const formatText = (text: string = ''): string => {
-    // Increase line height to avoid fraction overlap
-    return text.trim().replace(/\n/g, '<br/>');
+    // 1. Escape HTML characters to prevent < (less than) from being treated as tags
+    const escaped = escapeHtml(text);
+    // 2. Preserve formatting
+    return escaped.trim().replace(/\n/g, '<br/>');
 };
 
 const toRoman = (num: number): string => {
@@ -98,9 +100,9 @@ const renderQuestion = (question: Question, isAnswerKey: boolean): string => {
             <table style="width: 100%; border-collapse: collapse;">
                 <tbody>
                     <tr>
-                        <td style="vertical-align: top; width: 35px; font-weight: bold; font-size: 1.1em; line-height: 1.6;">${question.questionNumber}.</td>
-                        <td style="vertical-align: top; text-align: left; line-height: 1.8; font-size: 1.1em; padding-right: 10px;">${formatText(question.questionText)}</td>
-                        <td style="vertical-align: top; text-align: right; width: 60px; font-weight: bold; font-size: 1em; line-height: 1.6;">[${question.marks}]</td>
+                        <td style="vertical-align: top; width: 35px; font-weight: bold; font-size: 1.1em; line-height: 1.6; white-space: nowrap;">${question.questionNumber}.</td>
+                        <td style="vertical-align: top; text-align: left; line-height: 1.8; font-size: 1.1em; padding-right: 15px; width: auto;">${formatText(question.questionText)}</td>
+                        <td style="vertical-align: top; text-align: right; width: 60px; font-weight: bold; font-size: 1em; line-height: 1.6; white-space: nowrap;">[${question.marks}]</td>
                     </tr>
                 </tbody>
             </table>
