@@ -26,8 +26,8 @@ const triggerMathRendering = (element: HTMLElement | null) => {
                 {left: '\\[', right: '\\]', display: true}
             ], 
             throwOnError: false,
-            output: 'html', 
-            strict: false
+            strict: false,
+            trust: true
         });
     } catch (err) {
         console.error("KaTeX render error:", err);
@@ -63,13 +63,14 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     useEffect(() => {
         setEditingChat(createEditingChat(paperData));
         setCoEditorMessages([{ id: '1', sender: 'bot', text: "Paper formatting optimized for board standards. Ready for review." }]);
-        // Important: Notify parent that editor is ready (fixing missing header bug)
+        // Notify parent that editor is mounted/ready
         onReady();
     }, []);
 
     const paginate = useCallback(() => {
+        // Create a hidden staging area to render content and measure heights
         const container = document.createElement('div');
-        container.style.width = `${A4_WIDTH_PX - 120}px`; // Proper A4 width margin (60px each side)
+        container.style.width = `${A4_WIDTH_PX - 120}px`; // 60px padding on each side
         container.style.fontFamily = state.styles.fontFamily;
         container.style.position = 'absolute';
         container.style.left = '-9999px';
@@ -90,42 +91,50 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         const pages: string[] = [];
         let currentPageHtml = ""; 
         let currentHeight = 0;
-        // Reduce effective height slightly to ensure no cut-offs at the very bottom
-        const maxPageHeight = A4_HEIGHT_PX - 140; // 70px padding top/bottom safety buffer
+        // Conservative page height to prevent clipping
+        const maxPageHeight = A4_HEIGHT_PX - 140; // ~70px padding top/bottom
 
-        children.forEach((child) => {
+        // Iterate through all blocks (headers, sections, questions)
+        for (const child of children) {
             const el = child as HTMLElement;
-            // Get precise height including margins
+            // Force a layout calc
+            const height = el.getBoundingClientRect().height;
             const style = window.getComputedStyle(el);
-            const marginTop = parseFloat(style.marginTop) || 0;
-            const marginBottom = parseFloat(style.marginBottom) || 0;
-            const elHeight = el.offsetHeight + marginTop + marginBottom;
-            
-            // Check if adding this element would overflow
-            if (currentHeight + elHeight > maxPageHeight && currentPageHtml.length > 0) { 
-                pages.push(currentPageHtml); 
-                currentPageHtml = ""; 
-                currentHeight = 0; 
+            const marginY = parseFloat(style.marginTop) + parseFloat(style.marginBottom);
+            const totalHeight = height + marginY;
+
+            // If an element is taller than a single page, we have to let it flow/clip 
+            // OR put it on a new page and hope for best. 
+            // Here, we check if it fits on CURRENT page.
+            if (currentHeight + totalHeight > maxPageHeight) {
+                // If the current page is not empty, push it and start a new one
+                if (currentPageHtml.length > 0) {
+                    pages.push(currentPageHtml);
+                    currentPageHtml = "";
+                    currentHeight = 0;
+                }
             }
             
             currentPageHtml += el.outerHTML; 
-            currentHeight += elHeight;
-        });
+            currentHeight += totalHeight;
+        }
         
+        // Push the last page if it has content
         if (currentPageHtml.length > 0) {
             pages.push(currentPageHtml);
         }
 
-        // If no pages were generated (empty content), show at least one blank page
-        if (pages.length === 0) {
-            pages.push('<div style="text-align:center; padding-top: 50px;">No content available.</div>');
+        // Failsafe: If for some reason we have 0 pages but have content, dump it all in one page
+        // This handles cases where height calcs might fail completely
+        if (pages.length === 0 && htmlContent.length > 0) {
+            pages.push(htmlContent);
         }
 
         document.body.removeChild(container);
         setPagesHtml(pages);
         
-        // Wait for React render cycle then trigger math
-        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 50);
+        // Wait for React to render the pages, then trigger math
+        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
     }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
 
     useEffect(() => {
@@ -142,38 +151,37 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page-content');
             
             if (!pageElements || pageElements.length === 0) {
-                alert("Nothing to export.");
+                alert("Nothing to export. Please try regenerating.");
                 return;
             }
             
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
                 
-                // CRITICAL: Do NOT re-trigger math rendering here. 
-                // The math is already rendered on screen. Re-triggering causes layout shifts/glitches.
-                
+                // Use html2canvas with specific settings for best text clarity
                 const canvas = await html2canvas(el, { 
-                    scale: 3, // Higher scale for better quality
+                    scale: 2, // Good balance of quality and file size
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
                     allowTaint: true,
-                    // Ensure the canvas captures the full height correctly
-                    windowHeight: el.scrollHeight,
-                    height: el.scrollHeight
+                    // Ensure full height is captured even if scrolled
+                    height: el.scrollHeight, 
+                    windowHeight: el.scrollHeight
                 });
                 
                 const imgData = canvas.toDataURL('image/png');
                 if (i > 0) pdf.addPage();
                 
-                // Add image with slight buffer to avoid edge cutting
+                // Add image to PDF exactly fitting the A4 dimensions
                 pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
             }
+            
             const suffix = isAnswerKeyMode ? '_Answer_Key' : '_Question_Paper';
             pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}${suffix}.pdf`);
         } catch (error) {
             console.error("PDF Export Error:", error);
-            alert("Internal Error Occurred during export.");
+            alert("Internal Error Occurred during export. Please check console.");
         } finally {
             setIsExporting(false);
         }
@@ -187,7 +195,8 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const res = await getAiEditResponse(editingChat, msg);
             if (res.text) {
                 setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Updated." }]);
-                setTimeout(() => triggerMathRendering(document.querySelector('.chat-scrollbar')), 100);
+                // Trigger formatting update manually if needed, or rely on effect
+                // paginate(); 
             }
         } catch (e) { console.error(e); }
         finally { setIsCoEditorTyping(false); }

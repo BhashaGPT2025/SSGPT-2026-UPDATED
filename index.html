@@ -118,33 +118,36 @@
     }
 
     /* --- KaTeX Fixes (CRITICAL for Fractions) --- */
+    /* Force proper line height for math container to avoid overlap */
     .katex {
-        font-size: 1.1em !important;
-        line-height: 1.5 !important; /* Increase general line height for math */
+        font-size: 1.15em !important;
+        line-height: 1.6 !important;
+        text-rendering: auto !important;
     }
     
-    /* Fraction line positioning */
+    /* Target the fraction bar specifically */
     .katex .mfrac .frac-line {
-        border-bottom-width: 1.5px !important; /* Make fraction bar slightly thicker */
-        margin-top: 3px !important;
-        margin-bottom: 3px !important;
+        border-bottom-width: 1.5px !important;
+        margin-top: 2px !important;
+        margin-bottom: 2px !important;
     }
     
-    /* Spacing for numerator and denominator */
-    .katex .mfrac .vlist-t > span {
-        padding: 2px 0 !important;
-    }
-
-    /* Prevent numerator overlapping the line */
+    /* Ensure the denominator has space from the bar */
     .katex .mfrac .vlist-t2 {
         margin-top: 0.2em !important;
     }
+    
+    /* Ensure numerator doesn't crash into bar */
+    .katex .mfrac .vlist-t > span {
+        padding-bottom: 2px !important;
+    }
 
-    /* Fix display mode margins */
+    /* Prevent cutting off long equations in display mode */
     .katex-display {
-        margin: 1em 0 !important;
         overflow-x: auto;
         overflow-y: hidden;
+        padding: 0.5em 0;
+        margin: 0.8em 0 !important;
     }
 
     /* --- Base Animations --- */
