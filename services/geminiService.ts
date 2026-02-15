@@ -5,10 +5,25 @@ export { generateHtmlFromPaperData };
 
 const handleApiError = (error: any, context: string) => {
     console.error(`Error in ${context}:`, error);
-    if (error?.message?.includes("Safety")) {
+    const errorMessage = error?.message?.toLowerCase() || '';
+
+    if (errorMessage.includes("safety")) {
         throw new Error("The content was flagged by safety filters. Please adjust your topics to comply with academic standards.");
     }
-    throw new Error(`AI Generation Failed (${context}). Stability check: Using Gemini 3 series models.`);
+    
+    // Check for quota-related errors
+    if (errorMessage.includes("quota") || errorMessage.includes("resource has been exhausted")) {
+        throw new Error(
+            "API Quota Exceeded.\n\n" +
+            "You've reached the request limit for your current API key plan. Here's what you can do:\n\n" +
+            "1. Try again in a few minutes.\n" +
+            "2. Use the 'Fast (Flash)' model setting for lower usage.\n" +
+            "3. Upgrade your project to a paid plan for higher limits. Visit:\n" +
+            "ai.google.dev/gemini-api/docs/billing"
+        );
+    }
+    
+    throw new Error(`AI Generation Failed (${context}). Please check your connection or try again. If the issue persists, your API key might be invalid.`);
 };
 
 /**
@@ -47,8 +62,7 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles, modelQuality } = formData;
     
-    // Using Gemini 3 Pro Preview for all generations to ensure high quality
-    const modelToUse = 'gemini-3-pro-preview';
+    const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-flash-latest';
 
     const finalPrompt = `
 You are a Senior Academic Examiner. Your task is to generate a high-quality, professional examination paper in JSON format.
