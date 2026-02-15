@@ -15,6 +15,23 @@ const handleApiError = (error: any, context: string) => {
 };
 
 /**
+ * Ensures any LaTeX patterns like \frac, \sqrt, \times that are not wrapped in $ are fixed.
+ * This is the most efficient way to handle "missing formatting" from AI.
+ */
+const ensureMathWrapped = (text: string): string => {
+    if (!text) return '';
+    // Pattern to catch common LaTeX commands not preceded by $ and wrap them
+    // Captures \frac, \sqrt, \times, \div, \sum, \alpha, \beta, \theta, etc.
+    const latexPattern = /(?<!\$)\\((?:frac|sqrt|times|div|sum|alpha|beta|gamma|delta|theta|pi|phi|rho|sigma|tau|omega|le|ge|neq|approx|pm|mp|cdot|nabla|partial)[^ $\t\r\n]*)(?!\$)/g;
+    
+    // Also catch fractions like {1}/{2} or simple digit/digit patterns that AI uses in text
+    return text.replace(latexPattern, (match) => {
+        // Simple heuristic: if it contains a LaTeX control word but no $ wrapper
+        return `$${match}$`;
+    });
+};
+
+/**
  * Robustly cleans and parses JSON from AI responses, handling markdown artifacts.
  */
 const parseAiJson = (text: string) => {
@@ -23,7 +40,6 @@ const parseAiJson = (text: string) => {
         return JSON.parse(cleanedText);
     } catch (e) {
         console.error("JSON Parse Error. Raw text:", text);
-        // Attempt to find JSON array or object if mixed with text
         const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
         if (jsonMatch) {
             try {
@@ -36,19 +52,16 @@ const parseAiJson = (text: string) => {
     }
 };
 
-// Helper to normalize vague AI outputs into strict QuestionType enums
 const normalizeQuestionType = (typeStr: string): QuestionType => {
     if (!typeStr) return QuestionType.ShortAnswer;
     const lower = typeStr.toLowerCase().replace(/_/g, ' ').replace(/-/g, ' ').trim();
-    
     if (lower.includes('multiple') || lower.includes('choice') || lower.includes('mcq')) return QuestionType.MultipleChoice;
     if (lower.includes('fill') || lower.includes('blank')) return QuestionType.FillInTheBlanks;
     if (lower.includes('true') || lower.includes('false') || lower.includes('assertion')) return QuestionType.TrueFalse;
     if (lower.includes('match')) return QuestionType.MatchTheFollowing;
     if (lower.includes('short') || lower.includes('brief') || lower.includes('one word')) return QuestionType.ShortAnswer;
     if (lower.includes('long') || lower.includes('detailed') || lower.includes('essay') || lower.includes('descriptive')) return QuestionType.LongAnswer;
-    
-    return QuestionType.ShortAnswer; // Safe default
+    return QuestionType.ShortAnswer;
 };
 
 export const extractConfigFromTranscript = async (transcript: string): Promise<any> => {
@@ -72,38 +85,24 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
 export const generateQuestionPaper = async (formData: FormData): Promise<QuestionPaperData> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred: API Key missing");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles, modelQuality } = formData;
-    
-    // Switch to 'gemini-flash-latest' for stability and speed. 
-    // Gemini 3 Preview models are causing the 404/Internal Errors.
+    const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles } = formData;
     const modelToUse = 'gemini-flash-latest';
 
     const finalPrompt = `
-You are a Senior Academic Examiner. Your task is to generate a high-quality, professional examination paper in JSON format.
+You are a Senior Academic Examiner. Generate a high-quality, professional examination paper in JSON format.
 
-**CORE LANGUAGE REQUIREMENT:**
-- Generate the ENTIRE assessment (questions, options, matches, solutions) strictly in: **${language}**.
-- Use formal academic tone and precise subject terminology appropriate for ${className}.
-
-**MATHEMATICAL & SCIENTIFIC FORMATTING (CRITICAL):**
-1. **DELIMITERS:** You **MUST** wrap ALL mathematical formulas, variables, and equations in single dollar signs ($). Example: "Calculate $x$ where $x = 5$".
-2. **LATEX:** Use professional LaTeX for all math. 
-3. **ESCAPING:** You **MUST** use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}, \\\\pm) for all LaTeX commands within the JSON string.
-4. **NO RAW LATEX:** Never output \frac{a}{b} without the surrounding $ signs.
-
-**QUESTION STRUCTURE RULES:**
-- **NO NUMBERING:** DO NOT include any numbering prefixes like "1.", "Q1", "a)", "(i)", "Column A:" inside the strings.
-- **Multiple Choice:** Return exactly 4 options as a plain array of strings.
-- **Match the Following:** Return an object for 'options': {"columnA": ["Item 1", "Item 2"...], "columnB": ["Match for 2", "Match for 1"...]}. Column B MUST be shuffled.
-- **Answer Key:** The "answer" field must contain a detailed model solution or the correct choice.
+**CORE LANGUAGE REQUIREMENT:** Strictly use: **${language}**.
+**MATHEMATICAL FORMATTING (CRITICAL):**
+1. Wrap ALL formulas/symbols/roots/fractions in single dollar signs ($). Example: "Calculate $x \\times y$".
+2. **ESCAPING:** Use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}, \\\\pm) for all LaTeX commands inside JSON.
+3. No raw LaTeX like \frac{a}{b} without $ markers.
 
 **PAPER PARAMETERS:**
 Subject: ${subject} | Grade: ${className} | Topics: ${topics} | Total Marks: ${totalMarks} | Time: ${timeAllowed}
 Mix: ${JSON.stringify(questionDistribution)}
 ${sourceMaterials ? `Context: ${sourceMaterials}` : ''}
 
-Return only a valid JSON array of question objects.
-`;
+Return only a valid JSON array of question objects.`;
 
     try {
         const parts: Part[] = [{ text: finalPrompt }];
@@ -112,36 +111,44 @@ Return only a valid JSON array of question objects.
                 parts.push({ inlineData: { data: file.data, mimeType: file.mimeType } });
             }
         }
-
         const response = await ai.models.generateContent({
             model: modelToUse,
             contents: { parts },
-            config: { 
-                responseMimeType: "application/json",
-                // Removed strict schema to allow Flash model more flexibility in JSON structure (prevents 500 errors)
-            }
+            config: { responseMimeType: "application/json" }
         });
 
         const generatedQuestionsRaw = parseAiJson(response.text as string);
-        
         if (!Array.isArray(generatedQuestionsRaw) || generatedQuestionsRaw.length === 0) {
             throw new Error("AI failed to produce content for the paper.");
         }
 
-        const processedQuestions: Question[] = generatedQuestionsRaw.map((q, index) => ({
-            ...q,
-            type: normalizeQuestionType(q.type), // CRITICAL FIX: Ensure type matches internal enums
-            options: q.options || null,
-            answer: q.answer || '',
-            questionNumber: index + 1
-        }));
+        const processedQuestions: Question[] = generatedQuestionsRaw.map((q, index) => {
+            const questionText = ensureMathWrapped(q.questionText || '');
+            const answer = typeof q.answer === 'string' ? ensureMathWrapped(q.answer) : q.answer;
+            let options = q.options;
+            
+            if (Array.isArray(options)) {
+                options = options.map(opt => ensureMathWrapped(opt));
+            } else if (options && typeof options === 'object') {
+                if (options.columnA) options.columnA = options.columnA.map((i: string) => ensureMathWrapped(i));
+                if (options.columnB) options.columnB = options.columnB.map((i: string) => ensureMathWrapped(i));
+            }
+
+            return {
+                ...q,
+                questionText,
+                options,
+                answer,
+                type: normalizeQuestionType(q.type),
+                questionNumber: index + 1
+            };
+        });
 
         const paperId = `paper-${Date.now()}`;
         const structuredPaperData: QuestionPaperData = {
             id: paperId, schoolName, className, subject, totalMarks: String(totalMarks),
             timeAllowed, questions: processedQuestions, htmlContent: '', createdAt: new Date().toISOString(),
         };
-        
         structuredPaperData.htmlContent = generateHtmlFromPaperData(structuredPaperData);
         return structuredPaperData;
     } catch (error) {
@@ -157,11 +164,7 @@ export const generateImage = async (prompt: string, aspectRatio: string = '1:1')
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
             contents: prompt,
-            config: { 
-                imageConfig: { 
-                    aspectRatio: aspectRatio as any, 
-                } 
-            }
+            config: { imageConfig: { aspectRatio: aspectRatio as any } }
         });
         for (const part of response.candidates![0].content.parts) {
             if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
@@ -180,9 +183,8 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
         model: "gemini-flash-latest",
         config: {
             systemInstruction: `You are an expert academic editor.
-            STRICT MATH: Use professional LaTeX with double backslashes inside JSON. 
+            STRICT MATH: Use LaTeX with double backslashes inside JSON. 
             WRAP MATH: Always wrap math in $ signs.
-            NO REDUNDANT NUMBERING: The system handles all layout numbering. 
             Preserve the paper's original language strictly.`
         }
     });
