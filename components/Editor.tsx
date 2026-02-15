@@ -25,7 +25,9 @@ const triggerMathRendering = (element: HTMLElement | null) => {
                 {left: '\\(', right: '\\)', display: false},
                 {left: '\\[', right: '\\]', display: true}
             ], 
-            throwOnError: false 
+            throwOnError: false,
+            output: 'html', // Ensure HTML output for better canvas capture
+            strict: false
         });
     } catch (err) {
         console.error("KaTeX render error:", err);
@@ -35,7 +37,6 @@ const triggerMathRendering = (element: HTMLElement | null) => {
 const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: QuestionPaperData) => void; onSaveAndExit: () => void; onReady: () => void; }>((props, ref) => {
     const { paperData, onSave, onSaveAndExit, onReady } = props;
     
-    // Fix: Explicitly typed state to resolve compatibility issues with branding updates and optional properties.
     const [state, setState] = useState<{
         paper: QuestionPaperData;
         styles: PaperStyles;
@@ -62,6 +63,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     useEffect(() => {
         setEditingChat(createEditingChat(paperData));
         setCoEditorMessages([{ id: '1', sender: 'bot', text: "Paper formatting optimized for board standards. Ready for review." }]);
+        // Call onReady immediately to ensure Header mounts
         onReady();
     }, []);
 
@@ -90,8 +92,8 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         let currentHeight = 0;
         const maxPageHeight = A4_HEIGHT_PX - 120; // 60px padding top/bottom
 
-        // Robust Fallback: If structured parsing yields no children (e.g., failed parsing), dump the whole content as one page
-        // to prevent "blank paper" error.
+        // Robust Fallback: If structured parsing yields no children, dump content as one page.
+        // This prevents the "blank paper" error if the HTML generator returns a single block.
         if (children.length === 0 && htmlContent.trim().length > 0) {
              pages.push(htmlContent);
         } else {
@@ -119,6 +121,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         // Final fallback if pages are still empty
         setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px;">No content generated. Please try regenerating.</div>']);
         
+        // Render Math only after DOM update
         setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
     }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
 
@@ -142,15 +145,20 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
-                triggerMathRendering(el);
+                
+                // Do NOT call triggerMathRendering here. The view is already rendered.
+                // Re-triggering can mess up the DOM structure right before capture.
                 
                 const canvas = await html2canvas(el, { 
-                    scale: 3.5, 
+                    scale: 2.5, // Reduced slightly for better performance/reliability
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
                     allowTaint: true,
-                    imageTimeout: 0
+                    imageTimeout: 0,
+                    // Fix layout shift issues during export
+                    windowWidth: el.scrollWidth,
+                    windowHeight: el.scrollHeight
                 });
                 
                 const imgData = canvas.toDataURL('image/png');
