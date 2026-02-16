@@ -6,8 +6,6 @@ import { GalleryIcon } from './icons/GalleryIcon';
 // Icons
 const DashboardIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" {...props}><path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" /><path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" /></svg>;
 const GenerateIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" {...props}><path fillRule="evenodd" d="M15.988 3.012A2.25 2.25 0 0118 5.25v6.5A2.25 2.25 0 0115.75 14h-6.5a2.25 2.25 0 01-2.25-2.25v-6.5A2.25 2.25 0 019.25 3h6.738zM14.5 6a.5.5 0 000-1h-5a.5.5 0 000 1h5zM14.5 8a.5.5 0 000-1h-5a.5.5 0 000 1h5zM11.5 10a.5.5 0 000-1h-2a.5.5 0 000 1h2z" clipRule="evenodd" /><path d="M2 5.25A3.25 3.25 0 015.25 2H12a.75.75 0 010 1.5H5.25A1.75 1.75 0 003.5 5.25v9.5A1.75 1.75 0 005.25 16.5h9.5A1.75 1.75 0 0016.5 14.75V8a.75.75 0 011.5 0v6.75A3.25 3.25 0 0114.75 18h-9.5A3.25 3.25 0 012 14.75v-9.5z" /></svg>;
-// Fix: Updated the ChatIcon with a more representative speech bubble SVG.
-const ChatIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" {...props}><path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.25-3.281A7.95 7.95 0 011 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM4.416 14.332a6.953 6.953 0 003.584.918 6 6 0 100-12 5.973 5.973 0 00-4.743 2.519l-2.262.226-1.571 4.125 3.992-1.002z" clipRule="evenodd" /></svg>;
 const PapersIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" {...props}><path d="M2.5 3A1.5 1.5 0 001 4.5v11A1.5 1.5 0 002.5 17h15a1.5 1.5 0 001.5-1.5v-11A1.5 1.5 0 0017.5 3h-15zM2 4.5a.5.5 0 01.5-.5h15a.5.5 0 01.5.5v11a.5.5 0 01-.5.5h-15a.5.5 0 01-.5-.5v-11z" /></svg>;
 const SettingsIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" {...props}><path fillRule="evenodd" d="M11.49 3.17a.75.75 0 01.51.02.75.75 0 01.444.444.75.75 0 01.02.51v.21a.75.75 0 01-.219.516l-.004.004a.75.75 0 00-.21.492v.006a.75.75 0 00.211.492l.004.004a.75.75 0 01.219.516v.21a.75.75 0 01-.51.02.75.75 0 01-.444.444.75.75 0 01-.51.02h-.21a.75.75 0 01-.516-.219l-.004-.004a.75.75 0 00-.492-.21h-.006a.75.75 0 00-.492.21l-.004.004a.75.75 0 01-.516.219h-.21a.75.75 0 01-.51-.02.75.75 0 01-.444-.444.75.75 0 01-.02-.51v-.21a.75.75 0 01.219-.516l.004-.004a.75.75 0 00.21-.492v-.006a.75.75 0 00-.21-.492l-.004-.004A.75.75 0 013.5 6.09v-.21a.75.75 0 01.51-.02.75.75 0 01.444-.444.75.75 0 01.51-.02h.21a.75.75 0 01.516.219l.004.004a.75.75 0 00.492.21h.006a.75.75 0 00.492-.21l.004.004a.75.75 0 01.516-.219h.21zM10 8.25a1.75 1.75 0 100 3.5 1.75 1.75 0 000-3.5zM4.26 11.49a.75.75 0 01.02-.51v-.21a.75.75 0 01.219-.516l.004-.004a.75.75 0 00.21-.492v-.006a.75.75 0 00-.21-.492l-.004-.004a.75.75 0 01-.219-.516v-.21a.75.75 0 01.51-.02.75.75 0 01.444-.444.75.75 0 01.51-.02h.21a.75.75 0 01.516.219l.004.004a.75.75 0 00.492.21h.006a.75.75 0 00.492-.21l.004.004a.75.75 0 01.516-.219h.21a.75.75 0 01.51.02.75.75 0 01.444.444.75.75 0 01.02.51v.21a.75.75 0 01-.219.516l-.004.004a.75.75 0 00-.21.492v.006a.75.75 0 00.211.492l.004.004a.75.75 0 01.219.516v.21a.75.75 0 01-.51.02.75.75 0 01-.444.444.75.75 0 01-.02-.51z" clipRule="evenodd" /></svg>;
 const LogoutIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" {...props}><path fillRule="evenodd" d="M3 4.25A2.25 2.25 0 015.25 2h5.5A2.25 2.25 0 0113 4.25v2a.75.75 0 01-1.5 0v-2A.75.75 0 0010.75 3.5h-5.5A.75.75 0 004.5 4.25v11.5c0 .414.336.75.75.75h5.5a.75.75 0 00.75-.75v-2a.75.75 0 011.5 0v2A2.25 2.25 0 0110.75 18h-5.5A2.25 2.25 0 013 15.75V4.25z" clipRule="evenodd" /><path fillRule="evenodd" d="M6 10a.75.75 0 01.75-.75h9.546l-1.048-1.047a.75.75 0 111.06-1.06l2.5 2.5a.75.75 0 010 1.06l-2.5 2.5a.75.75 0 11-1.06-1.06L16.296 10.75H6.75A.75.75 0 016 10z" clipRule="evenodd" /></svg>;
@@ -44,20 +42,16 @@ const NavItem: React.FC<{ icon: React.ReactNode; label: string; isActive: boolea
 );
 
 const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onLogout, theme, toggleTheme }) => {
-    // Fix: Added a link to the 'chat' page for teachers.
     const teacherLinks = [
         { page: 'teacherDashboard', label: 'Dashboard', icon: <DashboardIcon /> },
-        { page: 'chat', label: 'Chat Assistant', icon: <ChatIcon /> },
         { page: 'generate', label: 'Generate Paper', icon: <GenerateIcon /> },
         { page: 'gallery', label: 'My Uploads', icon: <GalleryIcon /> }, // Added Gallery
         { page: 'questionBank', label: 'Question Bank', icon: <QuestionBankIcon /> },
         { page: 'myPapers', label: 'My Papers', icon: <PapersIcon /> },
     ];
 
-    // Fix: Added a link to the 'chat' page for students.
     const studentLinks = [
         { page: 'studentDashboard', label: 'Dashboard', icon: <DashboardIcon /> },
-        { page: 'chat', label: 'Chat Assistant', icon: <ChatIcon /> },
         { page: 'gallery', label: 'My Uploads', icon: <GalleryIcon /> }, // Added Gallery for students too
         { page: 'practice', label: 'Practice Test', icon: <PracticeIcon /> },
         { page: 'assignedPapers', label: 'Assigned Papers', icon: <AssignedIcon /> },

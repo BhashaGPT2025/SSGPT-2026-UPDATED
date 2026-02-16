@@ -22,8 +22,6 @@ import AssignedPapers from './components/AssignedPapers';
 import AttendedPapers from './components/AttendedPapers';
 import PublicPaperView from './components/PublicPaperView';
 import Header from './Header';
-// Fix: Import the ChatbotInterface component to be used for the 'chat' page.
-import ChatbotInterface from './components/ChatbotInterface';
 import { ImageGallery } from './components/ImageGallery';
 import { ProImageEditor } from './components/ProImageEditor';
 
@@ -355,9 +353,6 @@ function App() {
         switch (page) {
           case 'teacherDashboard':
             return <TeacherDashboard user={currentUser} papers={papers} onNavigate={handleNavigate} onEditPaper={handleEditPaper} onRenamePaper={handleRenamePaper} onDuplicatePaper={handleDuplicatePaper} onDeletePaper={handleDeletePaper}/>;
-          // Fix: Added a case for the 'chat' page to render the ChatbotInterface.
-          case 'chat':
-            return <ChatbotInterface onGenerate={handleGenerate} />;
           case 'creationHub':
             return <CreationHub onNavigate={handleNavigate} onStartAnalysis={handleStartAnalysis} onStartImageAnalysis={handleStartImageAnalysis} />;
           case 'generate':
@@ -386,9 +381,6 @@ function App() {
         switch (page) {
             case 'studentDashboard':
                 return <StudentDashboard user={currentUser} onNavigate={handleNavigate} onViewPaperFromUrl={handleStudentViewPaperFromUrl} />;
-            // Fix: Added a case for the 'chat' page to render the ChatbotInterface.
-            case 'chat':
-                return <ChatbotInterface onGenerate={handleGenerate} />;
             case 'practice':
                 return <PracticeGenerator onSubmit={handleGenerate} isLoading={isLoading} user={currentUser} />;
             case 'assignedPapers':
