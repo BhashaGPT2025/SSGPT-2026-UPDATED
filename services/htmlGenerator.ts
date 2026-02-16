@@ -11,32 +11,9 @@ const escapeHtml = (unsafe: string | undefined | null): string => {
 }
 
 const formatText = (text: string = ''): string => {
-    if (!text) return '';
-    const regex = /(\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g;
-    const parts = text.split(regex);
-
-    // Regex to detect simple fractions (e.g., "1/2") and mixed numbers (e.g., "1 1/2").
-    const simpleFractionRegex = /^\s*(\d+\s+)?\d+\s*\/\s*\d+\s*$/;
-
-    return parts.map((part, index) => {
-        // Math parts are at odd indices because they are the separators captured by the regex.
-        if (index % 2 === 1) {
-            const isDisplayMath = part.startsWith('$$');
-            const mathContent = part.substring(isDisplayMath ? 2 : 1, part.length - (isDisplayMath ? 2 : 1));
-
-            // Check if the content is a simple inline fraction/mixed number AND does not contain LaTeX commands.
-            if (!isDisplayMath && simpleFractionRegex.test(mathContent) && !mathContent.includes('\\')) {
-                // It's a simple fraction. Render as plain text, without the delimiters.
-                return escapeHtml(mathContent).replace(/\n/g, '<br/>');
-            } else {
-                // It's a complex expression or a display math block. Let KaTeX handle it.
-                return part;
-            }
-        } else {
-            // This is a regular text part. Escape HTML and handle newlines.
-            return escapeHtml(part).replace(/\n/g, '<br/>');
-        }
-    }).join('');
+    const escaped = escapeHtml(text);
+    // Replace newlines with <br> but ensure there is some spacing
+    return escaped.trim().replace(/\n/g, '<br/>');
 };
 
 const toRoman = (num: number): string => {
@@ -51,32 +28,34 @@ const toRoman = (num: number): string => {
     return str;
 };
 
+// CSS styles injected directly into elements to ensure html2canvas captures them correctly
 const styles = {
-    root: `font-family: 'Times New Roman', serif; color: #000; background: #fff; width: 100%; min-height: 100%; font-size: 12pt; line-height: 1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact;`,
-    questionBlock: `break-inside: avoid; page-break-inside: avoid; margin-bottom: 16px; width: 100%; position: relative; padding-bottom: 4px;`,
+    root: `font-family: inherit; color: #000; background: #fff; width: 100%; min-height: 100%; line-height: 1.6; font-size: 12pt;`,
+    questionBlock: `break-inside: avoid; page-break-inside: avoid; margin-bottom: 24px; width: 100%; position: relative;`,
     questionTable: `width: 100%; border-collapse: collapse; margin-bottom: 8px;`,
-    questionNumberTd: `vertical-align: top; width: 35px; font-weight: 700; font-size: 1.1em; padding-top: 2px; color: #000;`,
-    questionTextTd: `vertical-align: top; text-align: left; padding-right: 12px; padding-top: 2px; color: #000;`,
-    marksTd: `vertical-align: top; text-align: right; width: 60px; font-weight: 600; font-size: 1em; padding-top: 2px; color: #000;`,
-    optionGrid: `display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; padding-left: 35px;`,
-    optionItem: `break-inside: avoid; line-height: 1.4; display: flex; align-items: baseline; margin-left: 20px; margin-bottom: 4px; color: #000;`,
-    matchTable: `width: 100%; border-collapse: collapse; margin-top: 12px; border: 1px solid #000;`,
-    matchTh: `padding: 8px; border: 1px solid #000; width: 50%; font-weight: 700; text-transform: uppercase; font-size: 0.9em; background-color: #f8fafc; color: #000;`,
-    matchTd: `padding: 8px; border: 1px solid #000; width: 50%; vertical-align: middle; line-height: 1.4; color: #000;`,
-    headerContainer: `text-align: center; width: 100%; margin-bottom: 24px; break-inside: avoid; border-bottom: 2px solid #000; padding-bottom: 12px;`,
-    headerSchool: `margin: 0; font-size: 24pt; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; line-height: 1.2; margin-bottom: 8px; color: #000;`,
-    headerSub: `margin: 4px 0; font-size: 14pt; font-weight: 600; color: #000;`,
-    metaTable: `width: 100%; margin-top: 12px; font-weight: 600; font-size: 1.1em; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 8px 0; color: #000;`,
+    questionNumberTd: `vertical-align: top; width: 35px; font-weight: 700; font-size: 1.1em; padding-top: 2px;`,
+    questionTextTd: `vertical-align: top; text-align: left; padding-right: 12px; padding-top: 2px;`,
+    marksTd: `vertical-align: top; text-align: right; width: 60px; font-weight: 600; font-size: 1em; padding-top: 2px;`,
+    optionGrid: `display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; padding-left: 35px;`,
+    optionItem: `break-inside: avoid; line-height: 1.5;`,
+    matchTable: `width: 100%; border-collapse: collapse; margin-top: 16px; border: 1px solid #000;`,
+    matchTh: `padding: 8px; border: 1px solid #000; width: 50%; font-weight: 700; text-transform: uppercase; font-size: 0.9em; background-color: #f8fafc;`,
+    matchTd: `padding: 8px; border: 1px solid #000; width: 50%; vertical-align: middle;`,
+    headerContainer: `text-align: center; width: 100%; margin-bottom: 32px; break-inside: avoid; border-bottom: 2px solid #000; padding-bottom: 16px;`,
+    headerSchool: `margin: 0; font-size: 24pt; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; line-height: 1.2; margin-bottom: 8px;`,
+    headerSub: `margin: 4px 0; font-size: 14pt; font-weight: 600;`,
+    metaTable: `width: 100%; margin-top: 16px; font-weight: 600; font-size: 1.1em; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 8px 0;`,
     sectionHeader: `text-align: center; margin: 24px 0 16px; break-inside: avoid; page-break-after: avoid;`,
-    sectionTitle: `font-weight: 800; text-transform: uppercase; font-size: 1.2em; border-bottom: 2px solid #000; display: inline-block; padding: 0 16px 4px; color: #000;`,
-    sectionMeta: `display: flex; justify-content: space-between; border-bottom: 1px solid #000; padding-bottom: 8px; margin-bottom: 16px; font-weight: 600; font-style: italic; color: #000;`
+    sectionTitle: `font-weight: 800; text-transform: uppercase; font-size: 1.2em; border-bottom: 2px solid #000; display: inline-block; padding: 0 16px 4px;`,
+    sectionMeta: `display: flex; justify-content: space-between; border-bottom: 1px solid #cbd5e1; padding-bottom: 8px; margin-bottom: 24px; font-weight: 600; font-style: italic; color: #475569;`
 };
 
 const renderOptions = (question: Question): string => {
     if (question.type === QuestionType.MultipleChoice && Array.isArray(question.options)) {
         const options = question.options as string[];
+        // Use a grid layout for better spacing and alignment, robust for PDF
         return `<div style="${styles.optionGrid}">
-            ${options.map((opt, i) => `<div style="${styles.optionItem}"><span style="font-weight: 600; margin-right: 8px; min-width: 24px;">(${String.fromCharCode(97 + i)})</span> <span>${formatText(opt)}</span></div>`).join('')}
+            ${options.map((opt, i) => `<div style="${styles.optionItem}"><span style="font-weight: 600; margin-right: 4px;">(${String.fromCharCode(97 + i)})</span> ${formatText(opt)}</div>`).join('')}
         </div>`;
     } else if (question.type === QuestionType.MatchTheFollowing) {
         let colA: string[] = [];
@@ -119,9 +98,9 @@ const renderOptions = (question: Question): string => {
 const renderQuestion = (question: Question, isAnswerKey: boolean): string => {
     const optionsHtml = renderOptions(question);
     const answerHtml = isAnswerKey ? `
-        <div style="margin-top: 8px; padding: 8px 12px; background-color: #f1f5f9; border-left: 4px solid #475569; font-size: 0.95em; break-inside: avoid;">
-            <strong style="color: #000; text-transform: uppercase; font-size: 0.85em; display: block; margin-bottom: 2px;">Solution:</strong>
-            <div style="line-height: 1.4; color: #000;">${formatText(typeof question.answer === 'string' ? question.answer : JSON.stringify(question.answer))}</div>
+        <div style="margin-top: 12px; padding: 12px; background-color: #f1f5f9; border-left: 4px solid #475569; font-size: 0.95em; break-inside: avoid;">
+            <strong style="color: #334155; text-transform: uppercase; font-size: 0.85em; display: block; margin-bottom: 4px;">Solution:</strong>
+            <div style="line-height: 1.5;">${formatText(typeof question.answer === 'string' ? question.answer : JSON.stringify(question.answer))}</div>
         </div>
     ` : '';
 
@@ -153,102 +132,19 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
     let sectionCount = 0;
     const isAnswerKey = options?.isAnswerKey ?? false;
 
-    // Strict CSS injection for proper math rendering in PDF exports
-    let contentHtml = `
-        <style>
-            /* Base math styles */
-            .katex { 
-                font-size: 1.15em !important; 
-                line-height: 1.2 !important; 
-                text-rendering: geometricPrecision !important;
-                color: #000 !important;
-                white-space: nowrap !important;
-            }
-            .katex * {
-                color: #000 !important;
-                border-color: #000 !important;
-            }
+    let contentHtml = '';
 
-            /* --- FRACTION LAYOUT FIX (FLEXBOX) --- */
-            /*
-               This override forces KaTeX fractions into a Flexbox layout, which is more
-               robust for html2canvas than the default absolute positioning.
-            */
-
-            /* Make the main container a flex column. column-reverse handles KaTeX's DOM order. */
-            .katex .mfrac .vlist {
-                display: flex !important;
-                flex-direction: column-reverse !important;
-                align-items: center !important;
-                position: static !important;
-                height: auto !important;
-            }
-
-            /* Reset the numerator and denominator containers. */
-            .katex .mfrac .vlist > span {
-                position: static !important;
-                display: block !important;
-                height: auto !important;
-                margin: 0 !important;
-                padding: 0 !important; /* Spacing is handled by internal struts which we no longer hide. */
-                text-align: center !important;
-                transform: none !important;
-                line-height: normal !important; /* Allow natural line height to prevent clipping. */
-            }
-
-            /* Style the fraction line. */
-            .katex .mfrac .frac-line {
-                width: 100% !important;
-                border-bottom: 1.5px solid black !important;
-                height: 0 !important;
-                min-height: 0 !important;
-                margin: 0.2em 0 !important; /* Use relative units for spacing around the line. */
-                display: block !important;
-            }
-            
-            /* DO NOT HIDE the strut. It provides the necessary vertical spacing for the numbers. */
-
-            /* Ensure text is black and visible */
-            .katex .mord {
-                color: #000 !important;
-            }
-
-            /* --------------------------------- */
-
-            /* General Reset for Export - Fixes line-height issues */
-            .katex, .MathJax, .math, .fraction {
-                vertical-align: baseline !important;
-            }
-
-            /* Container spacing */
-            .export-container {
-                line-height: 1.5 !important;
-                letter-spacing: 0.1px;
-                color: #000 !important;
-            }
-            
-            @media print {
-               .katex .frac-line {
-                    -webkit-print-color-adjust: exact;
-                    print-color-adjust: exact;
-                    border-color: #000 !important;
-               }
-            }
-            
-            img { max-width: 100%; height: auto; display: block; margin: 8px auto; }
-        </style>
-    `;
-
+    // Render Header
     const logoSrc = options?.logoConfig?.src;
     const logoAlignment = options?.logoConfig?.alignment ?? 'center';
-    const logoImgTag = logoSrc ? `<img src="${logoSrc}" alt="Logo" style="max-height: 90px; margin-bottom: 12px; display: block; margin-left: auto; margin-right: auto;" />` : '';
+    const logoImgTag = logoSrc ? `<img src="${logoSrc}" alt="Logo" style="max-height: 90px; margin-bottom: 16px; display: block; margin-left: auto; margin-right: auto;" />` : '';
     
     contentHtml += `
         <div style="${styles.headerContainer}">
             ${logoAlignment === 'center' ? logoImgTag : ''}
             <h1 style="${styles.headerSchool}">${escapeHtml(paperData.schoolName)}</h1>
             <div style="${styles.headerSub}">${escapeHtml(paperData.subject)}${isAnswerKey ? ' - ANSWER KEY' : ''}</div>
-            <div style="font-size: 1.1em; font-weight: 500; color: #000;">Class: ${escapeHtml(paperData.className)}</div>
+            <div style="font-size: 1.1em; font-weight: 500;">Class: ${escapeHtml(paperData.className)}</div>
             
             <table style="${styles.metaTable}">
                 <tr>

@@ -44,7 +44,7 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `Extract academic configuration from: "${transcript}". 
     Return JSON: {schoolName, className, subject, topics, difficulty, timeAllowed, questionDistribution: [{type, count, marks, taxonomy, difficulty}]}. 
-    Use standard LaTeX for any math.`;
+    Use LaTeX with double backslashes for any math.`;
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
@@ -72,11 +72,12 @@ You are a Senior Academic Examiner. Your task is to generate a high-quality, pro
 - Use formal academic tone and precise subject terminology appropriate for ${className}.
 
 **MATHEMATICAL & SCIENTIFIC FORMATTING (CRITICAL):**
-- All mathematical content must be in LaTeX, enclosed in single dollar signs ($...$).
-- **JSON ESCAPING IS MANDATORY:** Every LaTeX command backslash must be escaped for JSON. For example, write \`\\frac\` as \`\\\\frac\`. So \`$\\frac{1}{2}$\` becomes \`$\\\\frac{1}{2}$\` in the JSON output. This applies to ALL LaTeX commands.
+1. **LATEX FOR ALL MATH:** Use professional LaTeX for ALL formulas, equations, variables ($x$), symbols (multiplication $\\times$, division $\\div$, plus/minus $\\pm$, etc.), and units ($kg \\cdot m/s^2$).
+2. **ESCAPING:** You MUST use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}) for all LaTeX commands within JSON strings.
+3. **PACKAGING:** Enclose all LaTeX content in single dollar signs: $...$.
 
 **QUESTION STRUCTURE RULES:**
-- **NO NUMBERING:** DO NOT include any numbering prefixes like "1.", "Q1", "a)", "(i)", "Column A:" inside the strings. The UI handles numbering.
+- **NO NUMBERING:** DO NOT include any numbering prefixes like "1.", "Q1", "a)", "(i)", "Column A:" inside the strings.
 - **Multiple Choice:** Return exactly 4 options as a plain array of strings.
 - **Match the Following:** Return an object for 'options': {"columnA": ["Item 1", "Item 2"...], "columnB": ["Match for 2", "Match for 1"...]}. Column B MUST be shuffled.
 - **Answer Key:** The "answer" field must contain a detailed model solution or the correct choice.

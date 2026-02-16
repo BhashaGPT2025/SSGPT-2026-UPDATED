@@ -30,15 +30,14 @@ const triggerMathRendering = (element: HTMLElement | null): Promise<void> => {
                     {left: '\\[', right: '\\]', display: true}
                 ], 
                 throwOnError: false,
-                output: 'html', 
-                strict: false,
-                trust: true
+                output: 'html', // Use HTML output for better accessibility and potentially better PDF capture
+                strict: false
             });
         } catch (err) {
             console.error("KaTeX render error:", err);
         }
-        // Increased wait time significantly to ensure complex fractions layout correctly before measurement
-        setTimeout(resolve, 1500);
+        // Wait longer for layout thrashing to settle
+        setTimeout(resolve, 300);
     });
 };
 
@@ -75,28 +74,35 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     }, []);
 
     const paginate = useCallback(async () => {
+        // Create measurement container that mimics the exact print page environment
         const container = document.createElement('div');
         container.style.width = `${A4_WIDTH_PX}px`; 
         container.style.position = 'absolute';
         container.style.left = '-9999px';
         container.style.top = '0';
         container.style.visibility = 'hidden'; 
+        // Important: Match padding used in display
         container.style.padding = '60px'; 
         container.style.boxSizing = 'border-box';
         container.style.backgroundColor = 'white';
+        // Match typography explicitly
         container.style.fontFamily = state.styles.fontFamily;
         
-        container.className = 'prose max-w-none export-container';
+        // Use Tailwind prose classes to match the render environment
+        container.className = 'prose max-w-none print-container';
 
         const htmlContent = generateHtmlFromPaperData(state.paper, { 
             logoConfig: state.logo.src ? { src: state.logo.src, alignment: 'center' } : undefined,
             isAnswerKey: isAnswerKeyMode
         });
         
-        container.innerHTML = htmlContent; 
+        container.innerHTML = htmlContent; // htmlGenerator wraps content in #paper-root
         document.body.appendChild(container);
 
+        // Wait for fonts to load to ensure accurate height measurement
         await document.fonts.ready;
+
+        // Render math in the hidden container BEFORE measuring to get accurate heights
         await triggerMathRendering(container);
         
         const contentRoot = container.querySelector('#paper-root');
@@ -106,18 +112,24 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         let currentPageHtml = ""; 
         let currentHeight = 0;
         
-        // Revised safety buffer
-        const maxPageHeight = A4_HEIGHT_PX - 120 - 40; 
+        // Page height - Padding - Safety Buffer
+        // A4 Height: 1123px. Padding: 60px top + 60px bottom = 120px. 
+        // Available height = 1003px.
+        // Safety buffer for browser rendering differences: 50px.
+        const maxPageHeight = A4_HEIGHT_PX - 120 - 50; 
 
         children.forEach(child => {
             const el = child as HTMLElement;
             
+            // Get accurate height including margins using Computed Style
             const style = window.getComputedStyle(el);
             const marginTop = parseFloat(style.marginTop || '0');
             const marginBottom = parseFloat(style.marginBottom || '0');
-            // Use offsetHeight as a baseline, checking scrollHeight for expanded content
-            const elHeight = Math.max(el.offsetHeight, el.scrollHeight) + marginTop + marginBottom;
+            // Use getBoundingClientRect for sub-pixel precision which offsetHeight lacks
+            const rect = el.getBoundingClientRect();
+            const elHeight = rect.height + marginTop + marginBottom;
             
+            // Check if element exceeds remaining space on page
             if (currentHeight > 0 && currentHeight + elHeight > maxPageHeight) { 
                 pages.push(currentPageHtml); 
                 currentPageHtml = ""; 
@@ -128,12 +140,13 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             currentHeight += elHeight;
         });
 
+        // Push the last page
         if (currentPageHtml) pages.push(currentPageHtml);
         
         document.body.removeChild(container);
 
         if (pages.length === 0 && htmlContent) {
-            setPagesHtml([htmlContent]); 
+            setPagesHtml([htmlContent]); // Failsafe
         } else {
             setPagesHtml(pages);
         }
@@ -141,8 +154,10 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
 
     useEffect(() => {
+        // Debounce pagination to prevent flashing
         const timeoutId = setTimeout(() => {
             paginate().then(() => {
+                // Re-render math on visible pages after state update
                 setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
             });
         }, 100);
@@ -152,10 +167,6 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     const handleExportPDF = async () => {
         if (isExporting) return;
         setIsExporting(true);
-        
-        // Wait longer to ensure DOM is stable and fonts are loaded
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
         try {
             const pdf = new jsPDF('p', 'px', 'a4');
             const pdfW = pdf.internal.pageSize.getWidth();
@@ -171,30 +182,30 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
                 
+                // Use html2canvas with specific settings to fix fractional overlap and clarity
                 const canvas = await html2canvas(el, { 
-                    scale: 3, // High scale for text quality, but not 4 to avoid crashing on large docs
+                    scale: 2, // Higher scale for better text clarity
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
                     allowTaint: true,
-                    // Critical for preventing layout shift during capture
-                    windowWidth: 1200, // Fixed desktop width
-                    windowHeight: 1600,
+                    // Fix vertical offset issues
+                    scrollY: -window.scrollY, 
+                    windowWidth: document.documentElement.offsetWidth,
+                    windowHeight: document.documentElement.offsetHeight,
                     onclone: (clonedDoc) => {
+                        // Ensure cloned document has the correct font family
                         const clonedEl = clonedDoc.querySelector('.paper-page') as HTMLElement;
                         if (clonedEl) {
                             clonedEl.style.fontFamily = state.styles.fontFamily;
-                            const contentDiv = clonedEl.querySelector('.paper-page-content');
-                            if (contentDiv) {
-                                contentDiv.classList.add('export-container');
-                            }
                         }
                     }
                 });
                 
-                const imgData = canvas.toDataURL('image/png', 1.0);
+                const imgData = canvas.toDataURL('image/png');
                 if (i > 0) pdf.addPage();
                 
+                // Adjust dimensions to fit PDF exactly
                 pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
             }
             const suffix = isAnswerKeyMode ? '_Answer_Key' : '_Question_Paper';
@@ -235,7 +246,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center text-white">
                     <SpinnerIcon className="w-16 h-16 mb-6 text-indigo-400" />
                     <h2 className="text-2xl font-black tracking-tight">Finalizing PDF</h2>
-                    <p className="text-slate-400 mt-2 px-10 text-center">Optimizing math rendering and layout quality...</p>
+                    <p className="text-slate-400 mt-2 px-10 text-center">Rendering math equations and optimizing layout...</p>
                 </div>
             )}
             <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
@@ -268,17 +279,19 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 {pagesHtml.map((html, i) => (
                     <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-10 relative print:shadow-none print:mb-0" 
                         style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX, overflow: 'hidden' }}>
-                        <div className="paper-page-content prose max-w-none export-container" 
+                        {/* Wrapper to emulate padding but allow html2canvas to capture full element */}
+                        <div className="paper-page-content prose max-w-none" 
                              style={{ 
                                  fontFamily: state.styles.fontFamily, 
                                  height: '100%', 
                                  background: 'white', 
                                  padding: '60px',
                                  boxSizing: 'border-box',
-                                 overflow: 'hidden',
+                                 overflow: 'hidden'
                              }} 
                              dangerouslySetInnerHTML={{ __html: html }} 
                         />
+                        {/* Watermark Overlay */}
                         {state.watermark.type !== 'none' && (
                             <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-0 overflow-hidden" style={{ opacity: state.watermark.opacity }}>
                                 {state.watermark.type === 'text' && (
