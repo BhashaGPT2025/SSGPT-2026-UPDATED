@@ -24,7 +24,7 @@ import PublicPaperView from './components/PublicPaperView';
 import Header from './Header';
 import { ImageGallery } from './components/ImageGallery';
 import { ProImageEditor } from './components/ProImageEditor';
-import VoiceAssistant from './components/VoiceAssistant';
+import ChatbotInterface from './components/ChatbotInterface';
 
 
 function App() {
@@ -43,7 +43,6 @@ function App() {
   const [publicPaper, setPublicPaper] = useState<QuestionPaperData | null>(null);
   
   const [selectedImageForEdit, setSelectedImageForEdit] = useState<UploadedImage | null>(null);
-  const [voiceFormData, setVoiceFormData] = useState<Partial<FormData> | null>(null);
 
   const editorRef = useRef<any>(null);
   // A simple state to force re-render when the editor is ready, ensuring the ref is connected.
@@ -171,11 +170,6 @@ function App() {
     });
 
   }, [currentUser]);
-  
-  const handleVoiceAssistantComplete = (formData: FormData) => {
-    setVoiceFormData(formData);
-    handleNavigate('generate');
-  };
 
   const handleAnalysisComplete = (paper: QuestionPaperData) => {
     setIsLoading(true);
@@ -363,7 +357,7 @@ function App() {
           case 'creationHub':
             return <CreationHub onNavigate={handleNavigate} onStartAnalysis={handleStartAnalysis} onStartImageAnalysis={handleStartImageAnalysis} />;
           case 'generate':
-            return <GeneratorForm onSubmit={handleGenerate} isLoading={isLoading} user={currentUser} initialData={voiceFormData} onClearInitialData={() => setVoiceFormData(null)} />;
+            return <GeneratorForm onSubmit={handleGenerate} isLoading={isLoading} user={currentUser} />;
           case 'analyze':
             if (textToAnalyze) return <AnalysisScreen textToAnalyze={textToAnalyze} onComplete={handleAnalysisComplete} onCancel={() => handleNavigate('creationHub')} />;
             if (imagesToAnalyze) return <AnalysisScreen imagesToAnalyze={imagesToAnalyze} onComplete={handleAnalysisComplete} onCancel={() => handleNavigate('creationHub')} />;
@@ -379,6 +373,8 @@ function App() {
             return <Settings user={currentUser} theme={theme} toggleTheme={toggleTheme} onLogout={handleLogout} />;
           case 'gallery':
             return <ImageGallery onEditImage={handleEditImage} />;
+          case 'chat':
+            return <ChatbotInterface onGenerate={handleGenerate} />;
           default:
             return <TeacherDashboard user={currentUser} papers={papers} onNavigate={handleNavigate} onEditPaper={handleEditPaper} onRenamePaper={handleRenamePaper} onDuplicatePaper={handleDuplicatePaper} onDeletePaper={handleDeletePaper} />;
         }
@@ -401,6 +397,8 @@ function App() {
                 return <Settings user={currentUser} theme={theme} toggleTheme={toggleTheme} onLogout={handleLogout} />;
             case 'gallery':
                 return <ImageGallery onEditImage={handleEditImage} />;
+            case 'chat':
+                return <ChatbotInterface onGenerate={handleGenerate} />;
             default:
                 return <StudentDashboard user={currentUser} onNavigate={handleNavigate} onViewPaperFromUrl={handleStudentViewPaperFromUrl} />;
         }
@@ -445,7 +443,6 @@ function App() {
         >
         {renderContent()}
       </AppLayout>
-      {currentUser && <VoiceAssistant onFormReady={handleVoiceAssistantComplete} />}
     </div>
   );
 }

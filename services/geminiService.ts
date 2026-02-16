@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, FunctionDeclaration, Modality, Chat, Part, GenerateContentResponse, GenerateContentConfig } from "@google/genai";
 import { type FormData, type QuestionPaperData, Question, AnalysisResult } from '../types';
 import { generateHtmlFromPaperData } from "./htmlGenerator";
@@ -40,31 +41,13 @@ const parseAiJson = (text: string) => {
     }
 };
 
-export const rewriteTranscript = async (rawText: string): Promise<string> => {
-    if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
-    if (!rawText.trim()) return rawText;
-    
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `Rewrite the following user utterance into a clean, professional, and grammatically correct sentence. Correct any mistakes and add any missing words to make it sound like a formal request. Do not add any extra commentary, just provide the rewritten sentence.\n\nRaw utterance: "${rawText}"\n\nRewritten sentence:`;
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: prompt,
-        });
-        return response.text?.trim() || rawText;
-    } catch (error) {
-        console.error("Error rewriting transcript:", error);
-        return rawText; // fallback to raw text on error
-    }
-};
-
-
 export const generateQuestionPaper = async (formData: FormData): Promise<QuestionPaperData> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles, modelQuality } = formData;
     
-    const modelToUse = modelQuality === 'pro' ? 'gemini-3-flash-preview' : 'gemini-flash-latest';
+    // Fix: Updated model selection to align with guidelines for complex tasks and avoid prohibited models.
+    const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
     const finalPrompt = `
 You are a Senior Academic Examiner. Your task is to generate a high-quality, professional examination paper in JSON format.
@@ -160,7 +143,7 @@ export const generateChatResponseStream = async (
 ) => {
     // If no special config is needed, use the efficient, history-aware method.
     if (!useSearch && !useThinking) {
-        return chat.sendMessageStream(messageParts);
+        return chat.sendMessageStream({ message: messageParts });
     }
 
     // For dynamic configs (search/thinking), a one-off `generateContentStream` call is necessary.

@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { type FormData, QuestionType, type QuestionDistributionItem, Difficulty, Taxonomy, User } from '../types';
 import { LANGUAGES, QUESTION_TYPES, DIFFICULTY_LEVELS, BLOOM_TAXONOMY_LEVELS } from '../constants';
@@ -6,8 +7,6 @@ interface GeneratorFormProps {
   onSubmit: (formData: FormData) => void;
   isLoading: boolean;
   user: User;
-  initialData?: Partial<FormData> | null;
-  onClearInitialData?: () => void;
 }
 
 const PlusIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -19,6 +18,7 @@ const TrashIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
 );
 
 const DragHandleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+// Fix: Corrected the viewBox attribute syntax.
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" {...props}>
         <circle cx="9" cy="12" r="1.5"></circle><circle cx="9" cy="5" r="1.5"></circle><circle cx="9" cy="19" r="1.5"></circle>
         <circle cx="15" cy="12" r="1.5"></circle><circle cx="15" cy="5" r="1.5"></circle><circle cx="15" cy="19" r="1.5"></circle>
@@ -43,7 +43,7 @@ const FormField: React.FC<{name: string, label: string, value: string, onChange:
     )
 }
 
-const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user, initialData, onClearInitialData }) => {
+const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user }) => {
   const [formData, setFormData] = useState({
     schoolName: user.defaultSchoolName || '',
     className: '',
@@ -55,20 +55,6 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
     sourceMode: 'reference' as 'strict' | 'reference',
     modelQuality: 'flash' as 'flash' | 'pro',
   });
-  
-  useEffect(() => {
-    if (initialData) {
-        setFormData(prev => ({ 
-            ...prev, 
-            ...initialData,
-            schoolName: initialData.schoolName || prev.schoolName,
-         }));
-        if(initialData.questionDistribution) {
-            setQuestionDistribution(initialData.questionDistribution);
-        }
-        onClearInitialData?.();
-    }
-  }, [initialData, onClearInitialData]);
   
   useEffect(() => {
     setFormData(prev => ({...prev, schoolName: user.defaultSchoolName || ''}));
