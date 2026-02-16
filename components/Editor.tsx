@@ -37,7 +37,7 @@ const triggerMathRendering = (element: HTMLElement | null): Promise<void> => {
             console.error("KaTeX render error:", err);
         }
         // Increased wait time significantly to ensure complex fractions layout correctly before measurement
-        setTimeout(resolve, 600);
+        setTimeout(resolve, 800);
     });
 };
 
@@ -85,7 +85,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         container.style.backgroundColor = 'white';
         container.style.fontFamily = state.styles.fontFamily;
         
-        container.className = 'prose max-w-none print-container';
+        container.className = 'prose max-w-none export-container';
 
         const htmlContent = generateHtmlFromPaperData(state.paper, { 
             logoConfig: state.logo.src ? { src: state.logo.src, alignment: 'center' } : undefined,
@@ -168,7 +168,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 const el = pageElements[i] as HTMLElement;
                 
                 const canvas = await html2canvas(el, { 
-                    scale: 2, 
+                    scale: 4, // High resolution scale for crisp text and lines
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
@@ -180,13 +180,16 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                         const clonedEl = clonedDoc.querySelector('.paper-page') as HTMLElement;
                         if (clonedEl) {
                             clonedEl.style.fontFamily = state.styles.fontFamily;
-                            // Do not force 2.0 line-height here as it breaks KaTeX fractions.
-                            // The line-height is handled by CSS in htmlGenerator (1.6 for text, 1.2 for KaTeX).
+                            // Inject specific export styles if needed, though mostly handled by CSS
+                            const contentDiv = clonedEl.querySelector('.paper-page-content');
+                            if (contentDiv) {
+                                contentDiv.classList.add('export-container');
+                            }
                         }
                     }
                 });
                 
-                const imgData = canvas.toDataURL('image/png');
+                const imgData = canvas.toDataURL('image/png', 1.0); // Maximum quality
                 if (i > 0) pdf.addPage();
                 
                 pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
@@ -229,7 +232,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center text-white">
                     <SpinnerIcon className="w-16 h-16 mb-6 text-indigo-400" />
                     <h2 className="text-2xl font-black tracking-tight">Finalizing PDF</h2>
-                    <p className="text-slate-400 mt-2 px-10 text-center">Rendering math equations and optimizing layout...</p>
+                    <p className="text-slate-400 mt-2 px-10 text-center">Rendering high-quality document...</p>
                 </div>
             )}
             <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
@@ -262,7 +265,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 {pagesHtml.map((html, i) => (
                     <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-10 relative print:shadow-none print:mb-0" 
                         style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX, overflow: 'hidden' }}>
-                        <div className="paper-page-content prose max-w-none" 
+                        <div className="paper-page-content prose max-w-none export-container" 
                              style={{ 
                                  fontFamily: state.styles.fontFamily, 
                                  height: '100%', 
@@ -270,7 +273,6 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                                  padding: '60px',
                                  boxSizing: 'border-box',
                                  overflow: 'hidden',
-                                 // Line height is controlled by inner CSS
                              }} 
                              dangerouslySetInnerHTML={{ __html: html }} 
                         />

@@ -12,7 +12,6 @@ const escapeHtml = (unsafe: string | undefined | null): string => {
 
 const formatText = (text: string = ''): string => {
     const escaped = escapeHtml(text);
-    // Replace newlines with <br> but ensure there is some spacing
     return escaped.trim().replace(/\n/g, '<br/>');
 };
 
@@ -28,12 +27,10 @@ const toRoman = (num: number): string => {
     return str;
 };
 
-// CSS styles injected directly into elements to ensure html2canvas captures them correctly
-// Using Times New Roman and 1.6 line height as requested for better readability and structure
 const styles = {
-    root: `font-family: 'Times New Roman', serif; color: #000; background: #fff; width: 100%; min-height: 100%; line-height: 1.6; font-size: 12pt;`,
-    questionBlock: `break-inside: avoid; page-break-inside: avoid; margin-bottom: 12px; width: 100%; position: relative; padding-bottom: 4px;`,
-    questionTable: `width: 100%; border-collapse: collapse; margin-bottom: 4px;`,
+    root: `font-family: 'Times New Roman', Times, serif; color: #000; background: #fff; width: 100%; min-height: 100%; font-size: 12pt; line-height: 1.5;`,
+    questionBlock: `break-inside: avoid; page-break-inside: avoid; margin-bottom: 16px; width: 100%; position: relative; padding-bottom: 4px;`,
+    questionTable: `width: 100%; border-collapse: collapse; margin-bottom: 8px;`,
     questionNumberTd: `vertical-align: top; width: 35px; font-weight: 700; font-size: 1.1em; padding-top: 2px;`,
     questionTextTd: `vertical-align: top; text-align: left; padding-right: 12px; padding-top: 2px;`,
     marksTd: `vertical-align: top; text-align: right; width: 60px; font-weight: 600; font-size: 1em; padding-top: 2px;`,
@@ -54,7 +51,6 @@ const styles = {
 const renderOptions = (question: Question): string => {
     if (question.type === QuestionType.MultipleChoice && Array.isArray(question.options)) {
         const options = question.options as string[];
-        // Use a grid layout for better spacing and alignment, robust for PDF
         return `<div style="${styles.optionGrid}">
             ${options.map((opt, i) => `<div style="${styles.optionItem}"><span style="font-weight: 600; margin-right: 8px; min-width: 24px;">(${String.fromCharCode(97 + i)})</span> <span>${formatText(opt)}</span></div>`).join('')}
         </div>`;
@@ -133,25 +129,56 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
     let sectionCount = 0;
     const isAnswerKey = options?.isAnswerKey ?? false;
 
-    // Critical: Inject CSS to reset line-height for KaTeX to ensure fractions render correctly.
-    // The global line-height of 1.6 causes KaTeX vertical alignment to break (numerator/denominator drift).
-    // .katex must be 1.1 or normal.
+    // Optimized CSS for PDF Generation
     let contentHtml = `
         <style>
-            .katex { font-size: 1.15em; line-height: 1.2 !important; text-rendering: optimizeLegibility; }
-            .katex .base { white-space: nowrap; }
-            .katex-display { margin: 0.8em 0; overflow-x: auto; overflow-y: hidden; }
-            .katex-html { overflow: hidden; }
+            /* Base Math Styles */
+            .katex { 
+                font-size: 1.2em; 
+                text-rendering: geometricPrecision; 
+                line-height: 1.2 !important;
+            }
+            .katex-display { 
+                margin: 1em 0; 
+                overflow: visible; 
+            }
             
-            /* MathML fallback styling */
-            math { font-size: 16px; }
-            mfrac { vertical-align: middle; }
+            /* Fix Fraction Overlap & Visibility */
+            .katex .frac-line {
+                border-bottom-width: 1.5px !important; /* Make fraction bar thicker */
+                opacity: 1 !important;
+                background-color: black !important;
+                min-height: 1px !important;
+            }
+            
+            /* Improve spacing within fractions */
+            .katex .mfrac .vlist-t2 {
+                margin-right: 0.1em !important;
+            }
+            
+            /* Reset positioning contexts for export */
+            .katex, .MathJax, .math, .fraction {
+                white-space: nowrap !important;
+                display: inline-block !important;
+                vertical-align: middle !important;
+            }
+
+            /* Container Spacing for Export */
+            .export-container {
+                line-height: 1.6 !important;
+                letter-spacing: 0.2px;
+                -webkit-font-smoothing: antialiased;
+            }
+            
+            /* Print Specific Overrides */
+            @media print {
+                .katex { color: #000 !important; }
+            }
             
             img { max-width: 100%; height: auto; display: block; margin: 8px auto; }
         </style>
     `;
 
-    // Render Header
     const logoSrc = options?.logoConfig?.src;
     const logoAlignment = options?.logoConfig?.alignment ?? 'center';
     const logoImgTag = logoSrc ? `<img src="${logoSrc}" alt="Logo" style="max-height: 90px; margin-bottom: 12px; display: block; margin-left: auto; margin-right: auto;" />` : '';
