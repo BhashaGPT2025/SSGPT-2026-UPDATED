@@ -157,6 +157,7 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
                 border-bottom-width: 1.5px !important;
                 opacity: 1 !important;
                 background-color: #000 !important;
+                min-height: 1.5px !important;
             }
             
             /* Prevent denominator overlap */

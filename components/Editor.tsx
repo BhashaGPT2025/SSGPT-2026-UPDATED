@@ -154,7 +154,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         setIsExporting(true);
         
         // Wait longer to ensure DOM is stable and fonts are loaded
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
         try {
             const pdf = new jsPDF('p', 'px', 'a4');
@@ -178,8 +178,8 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                     logging: false,
                     allowTaint: true,
                     // Critical for preventing layout shift during capture
-                    windowWidth: document.documentElement.offsetWidth, 
-                    windowHeight: document.documentElement.offsetHeight,
+                    windowWidth: 1200, // Fixed desktop width
+                    windowHeight: 1600,
                     onclone: (clonedDoc) => {
                         const clonedEl = clonedDoc.querySelector('.paper-page') as HTMLElement;
                         if (clonedEl) {
