@@ -1,390 +1,316 @@
-
 import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
-import { type QuestionPaperData, type PaperStyles, type ImageState, WatermarkState } from '../types';
-import { generateHtmlFromPaperData } from '../services/htmlGenerator';
-import { StickyToolbar } from './StickyToolbar';
+import { Chat } from '@google/genai';
+import { type QuestionPaperData, type PaperStyles, type ImageState, type TextBoxState, Question, WatermarkState, LogoState, QuestionType, UploadedImage, Difficulty, Taxonomy } from '../types';
+import { createEditingChat, getAiEditResponse, generateHtmlFromPaperData } from '../services/geminiService';
+import EditorSidebar from './EditorToolbar';
 import EditableImage from './EditableImage';
+import CoEditorChat, { type CoEditorMessage } from './CoEditorChat';
+import { AiIcon } from './icons/AiIcon';
+import { GalleryIcon } from './icons/GalleryIcon';
+import { ImageGallery } from './ImageGallery';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 
-// A4 Dimensions in Pixels at ~96 DPI
 const A4_WIDTH_PX = 794; 
 const A4_HEIGHT_PX = 1123;
-const PAGE_PADDING_Y = 120; // 60px top + 60px bottom
 
-interface PageData {
-    id: string;
-    htmlContent: string;
-    images: ImageState[];
-}
-
-// --- PaperPage Sub-Component (Memoized) ---
-const PaperPage = React.memo(({ 
-    pageData, 
-    isActive, 
-    styles,
-    selectedImageId, 
-    onPageClick, 
-    onUpdateContent, 
-    onOverflow, 
-    onImageSelect, 
-    onImageUpdate 
-}: {
-    pageData: PageData;
-    isActive: boolean;
-    styles: PaperStyles;
-    selectedImageId: string | null;
-    onPageClick: (id: string) => void;
-    onUpdateContent: (id: string, html: string) => void;
-    onOverflow: (id: string, content: string) => void;
-    onImageSelect: (id: string | null) => void;
-    onImageUpdate: (pageId: string, img: ImageState) => void;
-}) => {
-    const editorRef = useRef<HTMLDivElement>(null);
-
-    // Sync content to parent state ONLY on blur to prevent cursor jumps
-    const handleBlur = () => {
-        if (editorRef.current) {
-            onUpdateContent(pageData.id, editorRef.current.innerHTML);
+const triggerMathRendering = (element: HTMLElement | null): Promise<void> => {
+    return new Promise((resolve) => {
+        if (!element || !(window as any).renderMathInElement) {
+            resolve();
+            return;
         }
-    };
-
-    // Auto-Pagination Logic
-    const handleInput = useCallback(() => {
-        const el = editorRef.current;
-        if (!el) return;
-
-        if (el.scrollHeight > el.clientHeight) {
-            // Find the last significant node to move
-            let lastNode = el.lastElementChild;
-            
-            // Skip empty text nodes or BRs at the very end
-            while (lastNode && (lastNode.nodeName === 'BR' || (lastNode.nodeType === Node.TEXT_NODE && !lastNode.textContent?.trim()))) {
-                lastNode.remove();
-                lastNode = el.lastElementChild;
-            }
-
-            if (lastNode) {
-                const contentToMove = lastNode.outerHTML;
-                lastNode.remove(); // Remove from DOM immediately
-                onOverflow(pageData.id, contentToMove); // Trigger parent to add to next page
-            }
+        try {
+            (window as any).renderMathInElement(element, { 
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\(', right: '\\)', display: false},
+                    {left: '\\[', right: '\\]', display: true}
+                ], 
+                throwOnError: false,
+                output: 'html', // Use HTML output for better accessibility and potentially better PDF capture
+                strict: false
+            });
+        } catch (err) {
+            console.error("KaTeX render error:", err);
         }
-    }, [onOverflow, pageData.id]);
-
-    // Handle initial HTML load
-    useEffect(() => {
-        if (editorRef.current && pageData.htmlContent && editorRef.current.innerHTML !== pageData.htmlContent) {
-            // Only update innerHTML if it's significantly different (e.g. initial load or external update)
-            // But if we are active, we generally trust our local DOM state unless strictly forced.
-            // For this implementation, we allow initial load.
-            if (!isActive) {
-                 editorRef.current.innerHTML = pageData.htmlContent;
-            } else if (editorRef.current.innerHTML === '') {
-                 editorRef.current.innerHTML = pageData.htmlContent;
-            }
-        }
-    }, [pageData.htmlContent, isActive]);
-
-    // Ensure focus if active
-    useEffect(() => {
-        if (isActive && editorRef.current && document.activeElement !== editorRef.current) {
-            // Check if we clicked on an image, if so, don't steal focus
-            if (!selectedImageId) {
-                editorRef.current.focus();
-            }
-        }
-    }, [isActive, selectedImageId]);
-
-    return (
-        <div 
-            className={`paper-page relative bg-white shadow-2xl transition-all duration-300 print:shadow-none print:m-0 group ${isActive ? 'ring-4 ring-indigo-500/20' : ''}`}
-            style={{
-                width: `${A4_WIDTH_PX}px`,
-                height: `${A4_HEIGHT_PX}px`,
-                minWidth: `${A4_WIDTH_PX}px`,
-                minHeight: `${A4_HEIGHT_PX}px`,
-                overflow: 'hidden',
-                position: 'relative'
-            }}
-            onMouseDown={() => onPageClick(pageData.id)}
-        >
-            {/* Text Layer */}
-            <div 
-                ref={editorRef}
-                contentEditable
-                suppressContentEditableWarning
-                className="w-full h-full p-[60px] outline-none prose max-w-none box-border"
-                style={{ 
-                    fontFamily: styles.fontFamily,
-                    color: styles.headingColor,
-                }}
-                onBlur={handleBlur}
-                onInput={handleInput}
-            />
-
-            {/* Image Layer */}
-            <div className="absolute inset-0 pointer-events-none z-10">
-                {pageData.images.map(img => (
-                    <EditableImage 
-                        key={img.id}
-                        imageState={img}
-                        isSelected={selectedImageId === img.id}
-                        onSelect={() => {
-                            onPageClick(pageData.id);
-                            onImageSelect(img.id);
-                        }}
-                        onUpdate={(newState) => onImageUpdate(pageData.id, newState)}
-                    />
-                ))}
-            </div>
-
-            {/* Page Footer */}
-            <div className="absolute bottom-2 right-4 text-xs text-gray-300 pointer-events-none print:hidden font-mono">
-                {pageData.id}
-            </div>
-        </div>
-    );
-}, (prev, next) => {
-    // Optimization: Don't re-render active page on text updates from parent (since we have local state)
-    // Re-render if: images changed, active state changed, styles changed, or selected image changed.
-    const isImagesChanged = prev.pageData.images !== next.pageData.images;
-    const isActiveChanged = prev.isActive !== next.isActive;
-    const isSelectionChanged = prev.selectedImageId !== next.selectedImageId;
-    const isStylesChanged = prev.styles !== next.styles;
-    
-    // If active, ignore htmlContent prop changes to prevent cursor reset
-    if (next.isActive && !isActiveChanged && !isImagesChanged && !isSelectionChanged && !isStylesChanged) {
-        return true; 
-    }
-    
-    return !isImagesChanged && !isActiveChanged && !isSelectionChanged && !isStylesChanged && prev.pageData.htmlContent === next.pageData.htmlContent;
-});
-
+        // Wait longer for layout thrashing to settle
+        setTimeout(resolve, 300);
+    });
+};
 
 const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: QuestionPaperData) => void; onSaveAndExit: () => void; onReady: () => void; }>((props, ref) => {
     const { paperData, onSave, onSaveAndExit, onReady } = props;
     
-    // --- STATE ---
-    const [pages, setPages] = useState<PageData[]>([]);
-    const [activePageId, setActivePageId] = useState<string | null>(null);
-    const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
-    const [styles, setStyles] = useState<PaperStyles>({ fontFamily: "Times New Roman", headingColor: '#000000', borderColor: '#000000', borderWidth: 1, borderStyle: 'solid' });
-    const [isExporting, setIsExporting] = useState(false);
-    
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [state, setState] = useState<{
+        paper: QuestionPaperData;
+        styles: PaperStyles;
+        images: ImageState[];
+        logo: LogoState;
+        watermark: WatermarkState;
+    }>({
+        paper: paperData,
+        styles: { fontFamily: "'Times New Roman', Times, serif", headingColor: '#000000', borderColor: '#000000', borderWidth: 1, borderStyle: 'solid' },
+        images: [],
+        logo: { src: paperData.schoolLogo, position: paperData.schoolLogo ? 'header-center' : 'none', size: 150, opacity: 0.1 },
+        watermark: { type: 'none', text: 'DRAFT', color: '#cccccc', fontSize: 80, opacity: 0.1, rotation: -45 },
+    });
 
-    // --- INITIALIZATION ---
+    const [isExporting, setIsExporting] = useState(false);
+    const [isAnswerKeyMode, setIsAnswerKeyMode] = useState(false);
+    const [sidebarView, setSidebarView] = useState<'toolbar' | 'chat' | 'gallery'>('toolbar');
+    const [coEditorMessages, setCoEditorMessages] = useState<CoEditorMessage[]>([]);
+    const [isCoEditorTyping, setIsCoEditorTyping] = useState(false);
+    const [editingChat, setEditingChat] = useState<Chat | null>(null);
+    const [pagesHtml, setPagesHtml] = useState<string[]>([]);
+    const pagesContainerRef = useRef<HTMLDivElement>(null);
+
     useEffect(() => {
-        const initialHtml = generateHtmlFromPaperData(paperData, {
-            logoConfig: paperData.schoolLogo ? { src: paperData.schoolLogo, alignment: 'center' } : undefined
-        });
-        
-        const initialPageId = 'page-1';
-        setPages([{
-            id: initialPageId,
-            htmlContent: initialHtml,
-            images: []
-        }]);
-        setActivePageId(initialPageId);
+        setEditingChat(createEditingChat(paperData));
+        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Paper formatting optimized for board standards. Ready for review." }]);
         onReady();
     }, []);
 
-    // --- HANDLERS ---
+    const paginate = useCallback(async () => {
+        // Create measurement container that mimics the exact print page environment
+        const container = document.createElement('div');
+        container.style.width = `${A4_WIDTH_PX}px`; 
+        container.style.position = 'absolute';
+        container.style.left = '-9999px';
+        container.style.top = '0';
+        container.style.visibility = 'hidden'; 
+        // Important: Match padding used in display
+        container.style.padding = '60px'; 
+        container.style.boxSizing = 'border-box';
+        container.style.backgroundColor = 'white';
+        // Match typography explicitly
+        container.style.fontFamily = state.styles.fontFamily;
+        
+        // Use Tailwind prose classes to match the render environment
+        container.className = 'prose max-w-none print-container';
 
-    const handlePageClick = useCallback((id: string) => {
-        setActivePageId(id);
-        // Deselect image if clicking on page body
-        // setSelectedImageId(null); // Moved to container click
-    }, []);
-
-    const handleUpdateContent = useCallback((pageId: string, html: string) => {
-        setPages(prev => prev.map(p => p.id === pageId ? { ...p, htmlContent: html } : p));
-    }, []);
-
-    const handleOverflow = useCallback((pageId: string, contentToMove: string) => {
-        setPages(prev => {
-            const index = prev.findIndex(p => p.id === pageId);
-            if (index === -1) return prev;
-
-            const newPages = [...prev];
-            const nextPage = newPages[index + 1];
-
-            if (nextPage) {
-                newPages[index + 1] = {
-                    ...nextPage,
-                    htmlContent: contentToMove + nextPage.htmlContent
-                };
-                // We'll switch focus to next page in useEffect or timeout
-            } else {
-                const newId = `page-${Date.now()}`;
-                newPages.push({
-                    id: newId,
-                    htmlContent: contentToMove,
-                    images: []
-                });
-            }
-            return newPages;
+        const htmlContent = generateHtmlFromPaperData(state.paper, { 
+            logoConfig: state.logo.src ? { src: state.logo.src, alignment: 'center' } : undefined,
+            isAnswerKey: isAnswerKeyMode
         });
         
-        // Auto-switch focus to next page shortly after overflow
-        setTimeout(() => {
-            setPages(currentPages => {
-                const idx = currentPages.findIndex(p => p.id === pageId);
-                if (idx !== -1 && idx + 1 < currentPages.length) {
-                    setActivePageId(currentPages[idx + 1].id);
-                }
-                return currentPages;
-            });
-        }, 50);
-    }, []);
+        container.innerHTML = htmlContent; // htmlGenerator wraps content in #paper-root
+        document.body.appendChild(container);
 
-    const handleImageUpdate = useCallback((pageId: string, updatedImg: ImageState) => {
-        setPages(prev => prev.map(p => p.id === pageId ? {
-            ...p,
-            images: p.images.map(img => img.id === updatedImg.id ? updatedImg : img)
-        } : p));
-    }, []);
+        // Wait for fonts to load to ensure accurate height measurement
+        await document.fonts.ready;
 
-    const handleImageSelect = useCallback((imgId: string | null) => {
-        setSelectedImageId(imgId);
-    }, []);
-
-    const addPage = useCallback(() => {
-        const newId = `page-${Date.now()}`;
-        setPages(prev => [...prev, {
-            id: newId,
-            htmlContent: '',
-            images: []
-        }]);
-        setActivePageId(newId);
-    }, []);
-
-    const execCommand = useCallback((command: string, value?: string) => {
-        document.execCommand(command, false, value);
-    }, []);
-
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file || !activePageId) return;
+        // Render math in the hidden container BEFORE measuring to get accurate heights
+        await triggerMathRendering(container);
         
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            const src = ev.target?.result as string;
-            const newImage: ImageState = {
-                id: `img-${Date.now()}`,
-                src,
-                x: 100, y: 100, width: 200, height: 200, rotation: 0, pageIndex: 0
-            };
-            setPages(prev => prev.map(p => p.id === activePageId ? { ...p, images: [...p.images, newImage] } : p));
-            setSelectedImageId(newImage.id);
-        };
-        reader.readAsDataURL(file);
-        if (e.target) e.target.value = '';
-    };
+        const contentRoot = container.querySelector('#paper-root');
+        const children = Array.from(contentRoot?.children || []);
+        
+        const pages: string[] = [];
+        let currentPageHtml = ""; 
+        let currentHeight = 0;
+        
+        // Page height - Padding - Safety Buffer
+        // A4 Height: 1123px. Padding: 60px top + 60px bottom = 120px. 
+        // Available height = 1003px.
+        // Safety buffer for browser rendering differences: 50px.
+        const maxPageHeight = A4_HEIGHT_PX - 120 - 50; 
 
-    const deleteSelectedObject = () => {
-        if (!selectedImageId) return;
-        setPages(prev => prev.map(p => ({
-            ...p,
-            images: p.images.filter(img => img.id !== selectedImageId)
-        })));
-        setSelectedImageId(null);
-    };
+        children.forEach(child => {
+            const el = child as HTMLElement;
+            
+            // Get accurate height including margins using Computed Style
+            const style = window.getComputedStyle(el);
+            const marginTop = parseFloat(style.marginTop || '0');
+            const marginBottom = parseFloat(style.marginBottom || '0');
+            // Use getBoundingClientRect for sub-pixel precision which offsetHeight lacks
+            const rect = el.getBoundingClientRect();
+            const elHeight = rect.height + marginTop + marginBottom;
+            
+            // Check if element exceeds remaining space on page
+            if (currentHeight > 0 && currentHeight + elHeight > maxPageHeight) { 
+                pages.push(currentPageHtml); 
+                currentPageHtml = ""; 
+                currentHeight = 0; 
+            }
+            
+            currentPageHtml += el.outerHTML; 
+            currentHeight += elHeight;
+        });
 
-    // --- EXPORT ---
-    const handleExport = async () => {
+        // Push the last page
+        if (currentPageHtml) pages.push(currentPageHtml);
+        
+        document.body.removeChild(container);
+
+        if (pages.length === 0 && htmlContent) {
+            setPagesHtml([htmlContent]); // Failsafe
+        } else {
+            setPagesHtml(pages);
+        }
+        
+    }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
+
+    useEffect(() => {
+        // Debounce pagination to prevent flashing
+        const timeoutId = setTimeout(() => {
+            paginate().then(() => {
+                // Re-render math on visible pages after state update
+                setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
+            });
+        }, 100);
+        return () => clearTimeout(timeoutId);
+    }, [paginate]);
+
+    const handleExportPDF = async () => {
+        if (isExporting) return;
         setIsExporting(true);
-        setSelectedImageId(null);
-        await new Promise(r => setTimeout(r, 200));
-
         try {
-            const pdf = new jsPDF('p', 'mm', 'a4');
-            const pageElements = document.querySelectorAll('.paper-page');
+            const pdf = new jsPDF('p', 'px', 'a4');
+            const pdfW = pdf.internal.pageSize.getWidth();
+            const pdfH = pdf.internal.pageSize.getHeight();
+            const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page');
+            
+            if (!pageElements || pageElements.length === 0) {
+                alert("Nothing to export.");
+                setIsExporting(false);
+                return;
+            }
             
             for (let i = 0; i < pageElements.length; i++) {
-                if (i > 0) pdf.addPage();
-                const canvas = await html2canvas(pageElements[i] as HTMLElement, {
-                    scale: 2,
-                    useCORS: true,
+                const el = pageElements[i] as HTMLElement;
+                
+                // Use html2canvas with specific settings to fix fractional overlap and clarity
+                const canvas = await html2canvas(el, { 
+                    scale: 2, // Higher scale for better text clarity
+                    useCORS: true, 
+                    backgroundColor: '#ffffff',
                     logging: false,
-                    backgroundColor: '#ffffff'
+                    allowTaint: true,
+                    // Fix vertical offset issues
+                    scrollY: -window.scrollY, 
+                    windowWidth: document.documentElement.offsetWidth,
+                    windowHeight: document.documentElement.offsetHeight,
+                    onclone: (clonedDoc) => {
+                        // Ensure cloned document has the correct font family
+                        const clonedEl = clonedDoc.querySelector('.paper-page') as HTMLElement;
+                        if (clonedEl) {
+                            clonedEl.style.fontFamily = state.styles.fontFamily;
+                        }
+                    }
                 });
-                const imgData = canvas.toDataURL('image/jpeg', 0.85); 
-                const pdfWidth = pdf.internal.pageSize.getWidth();
-                const pdfHeight = pdf.internal.pageSize.getHeight();
-                pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+                
+                const imgData = canvas.toDataURL('image/png');
+                if (i > 0) pdf.addPage();
+                
+                // Adjust dimensions to fit PDF exactly
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
             }
-            pdf.save(`${paperData.subject}_Paper.pdf`);
-        } catch (e) {
-            console.error(e);
-            alert("Export failed.");
+            const suffix = isAnswerKeyMode ? '_Answer_Key' : '_Question_Paper';
+            pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}${suffix}.pdf`);
+        } catch (error) {
+            console.error("PDF Export Error:", error);
+            alert("Internal Error Occurred during export.");
         } finally {
             setIsExporting(false);
         }
     };
 
+    const handleCoEditorSend = async (msg: string) => {
+        if (!editingChat || isCoEditorTyping) return;
+        setCoEditorMessages(prev => [...prev, { id: Date.now().toString(), sender: 'user', text: msg }]);
+        setIsCoEditorTyping(true);
+        try {
+            const res = await getAiEditResponse(editingChat, msg);
+            if (res.text) {
+                setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Updated." }]);
+                setTimeout(() => triggerMathRendering(document.querySelector('.chat-scrollbar')), 100);
+            }
+        } catch (e) { console.error(e); }
+        finally { setIsCoEditorTyping(false); }
+    };
+
     useImperativeHandle(ref, () => ({
-        handleSaveAndExitClick: () => {
-            // Simple serialization: Concatenate all pages with a separator
-            const fullHtml = pages.map(p => `<div class="page-break-wrapper">${p.htmlContent}</div>`).join('<hr class="page-break"/>');
-            onSave({ ...paperData, htmlContent: fullHtml });
-            onSaveAndExit();
-        },
-        openExportModal: handleExport,
-        paperSubject: paperData.subject
+        handleSaveAndExitClick: onSaveAndExit,
+        openExportModal: handleExportPDF,
+        openAnswerKeyModal: () => setIsAnswerKeyMode(prev => !prev),
+        paperSubject: state.paper.subject,
+        isAnswerKeyMode
     }));
 
     return (
-        <div className="flex flex-col h-screen bg-gray-200 dark:bg-gray-900 overflow-hidden font-sans">
-            <input type="file" ref={fileInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
-            
+        <div className="flex h-full bg-slate-200 dark:bg-gray-900 overflow-hidden relative">
             {isExporting && (
-                <div className="fixed inset-0 z-[100] bg-black/80 flex flex-col items-center justify-center text-white backdrop-blur-md">
-                    <SpinnerIcon className="w-12 h-12 mb-4 text-indigo-500" />
-                    <p className="text-xl font-bold">Rendering High-Quality PDF...</p>
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center text-white">
+                    <SpinnerIcon className="w-16 h-16 mb-6 text-indigo-400" />
+                    <h2 className="text-2xl font-black tracking-tight">Finalizing PDF</h2>
+                    <p className="text-slate-400 mt-2 px-10 text-center">Rendering math equations and optimizing layout...</p>
                 </div>
             )}
-
-            <StickyToolbar 
-                onStyleChange={execCommand}
-                onInsertImage={() => fileInputRef.current?.click()}
-                onAddPage={addPage}
-                onDeleteObject={deleteSelectedObject}
-                canDeleteObject={!!selectedImageId}
-                styles={styles}
-            />
-
-            <div 
-                className="flex-1 overflow-y-auto p-8 flex flex-col items-center gap-8 scroll-smooth pb-40" 
-                onClick={() => setSelectedImageId(null)}
-            >
-                {pages.map((page) => (
-                    <PaperPage 
-                        key={page.id}
-                        pageData={page}
-                        isActive={activePageId === page.id}
-                        styles={styles}
-                        selectedImageId={selectedImageId}
-                        onPageClick={handlePageClick}
-                        onUpdateContent={handleUpdateContent}
-                        onOverflow={handleOverflow}
-                        onImageSelect={handleImageSelect}
-                        onImageUpdate={handleImageUpdate}
-                    />
-                ))}
-                
-                <button 
-                    onClick={addPage}
-                    className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-800 text-indigo-600 font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all"
-                >
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
-                    Add Page
-                </button>
+            <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
+                <div className="flex border-b dark:border-slate-800">
+                    <button onClick={() => setSidebarView('toolbar')} className={`flex-1 p-3 text-xs font-black tracking-tighter uppercase ${sidebarView === 'toolbar' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>Design</button>
+                    <button onClick={() => setSidebarView('chat')} className={`flex-1 p-3 text-xs font-black tracking-tighter uppercase ${sidebarView === 'chat' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><AiIcon className="w-4 h-4 mx-auto"/></button>
+                    <button onClick={() => setSidebarView('gallery')} className={`flex-1 p-3 text-xs font-black tracking-tighter uppercase ${sidebarView === 'gallery' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><GalleryIcon className="w-4 h-4 mx-auto"/></button>
+                </div>
+                <div className="flex-1 overflow-y-auto chat-scrollbar">
+                    {sidebarView === 'toolbar' && (
+                        <EditorSidebar 
+                            styles={state.styles} 
+                            onStyleChange={(k, v) => setState(s => ({...s, styles: {...s.styles, [k]: v}}))} 
+                            paperSize="a4" 
+                            onPaperSizeChange={()=>{}} 
+                            logo={state.logo} 
+                            watermark={state.watermark} 
+                            onBrandingUpdate={u => setState(s => ({...s, ...u}))} 
+                            onOpenImageModal={() => {}} 
+                            onUploadImageClick={() => {}} 
+                            isAnswerKeyMode={isAnswerKeyMode}
+                            onToggleShowQuestions={() => setIsAnswerKeyMode(p => !p)}
+                        />
+                    )}
+                    {sidebarView === 'chat' && <CoEditorChat messages={coEditorMessages} isTyping={isCoEditorTyping} onSendMessage={handleCoEditorSend} />}
+                    {sidebarView === 'gallery' && <ImageGallery isCompact onEditImage={() => {}} />}
+                </div>
             </div>
+            <main className="flex-1 overflow-auto p-8 bg-slate-300 dark:bg-slate-950/20" ref={pagesContainerRef}>
+                {pagesHtml.map((html, i) => (
+                    <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-10 relative print:shadow-none print:mb-0" 
+                        style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX, overflow: 'hidden' }}>
+                        {/* Wrapper to emulate padding but allow html2canvas to capture full element */}
+                        <div className="paper-page-content prose max-w-none" 
+                             style={{ 
+                                 fontFamily: state.styles.fontFamily, 
+                                 height: '100%', 
+                                 background: 'white', 
+                                 padding: '60px',
+                                 boxSizing: 'border-box',
+                                 overflow: 'hidden'
+                             }} 
+                             dangerouslySetInnerHTML={{ __html: html }} 
+                        />
+                        {/* Watermark Overlay */}
+                        {state.watermark.type !== 'none' && (
+                            <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-0 overflow-hidden" style={{ opacity: state.watermark.opacity }}>
+                                {state.watermark.type === 'text' && (
+                                    <div style={{ 
+                                        transform: `rotate(${state.watermark.rotation}deg)`, 
+                                        fontSize: `${state.watermark.fontSize}px`, 
+                                        color: state.watermark.color,
+                                        fontWeight: 'bold',
+                                        whiteSpace: 'nowrap'
+                                    }}>
+                                        {state.watermark.text}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </main>
         </div>
     );
 });
-
 export default Editor;
