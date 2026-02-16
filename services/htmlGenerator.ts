@@ -11,8 +11,23 @@ const escapeHtml = (unsafe: string | undefined | null): string => {
 }
 
 const formatText = (text: string = ''): string => {
-    const escaped = escapeHtml(text);
-    return escaped.trim().replace(/\n/g, '<br/>');
+    if (!text) return '';
+    // This regex splits the text by math delimiters ($...$ or $$...$$)
+    // The capturing group in split() ensures the delimiters are included in the resulting array.
+    const regex = /(\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g;
+    const parts = text.split(regex);
+    
+    return parts.map((part, index) => {
+        // Math parts are at odd indices because they are the separators captured by the regex.
+        if (index % 2 === 1) {
+            // This is a math part (e.g., '$...$'). Return it as is, so KaTeX can render it.
+            return part;
+        } else {
+            // This is a regular text part. Escape HTML entities to prevent injection
+            // and convert newlines to <br> tags for display.
+            return escapeHtml(part).replace(/\n/g, '<br/>');
+        }
+    }).join('');
 };
 
 const toRoman = (num: number): string => {
