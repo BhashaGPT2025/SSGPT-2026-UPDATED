@@ -29,23 +29,24 @@ const toRoman = (num: number): string => {
 };
 
 // CSS styles injected directly into elements to ensure html2canvas captures them correctly
+// Increased line-height to 2.0 to accommodate fractions (KaTeX) without overlapping
 const styles = {
-    root: `font-family: inherit; color: #000; background: #fff; width: 100%; min-height: 100%; line-height: 1.6; font-size: 12pt;`,
-    questionBlock: `break-inside: avoid; page-break-inside: avoid; margin-bottom: 24px; width: 100%; position: relative;`,
+    root: `font-family: inherit; color: #000; background: #fff; width: 100%; min-height: 100%; line-height: 2.0; font-size: 12pt;`,
+    questionBlock: `break-inside: avoid; page-break-inside: avoid; margin-bottom: 24px; width: 100%; position: relative; padding-bottom: 4px;`,
     questionTable: `width: 100%; border-collapse: collapse; margin-bottom: 8px;`,
-    questionNumberTd: `vertical-align: top; width: 35px; font-weight: 700; font-size: 1.1em; padding-top: 2px;`,
-    questionTextTd: `vertical-align: top; text-align: left; padding-right: 12px; padding-top: 2px;`,
-    marksTd: `vertical-align: top; text-align: right; width: 60px; font-weight: 600; font-size: 1em; padding-top: 2px;`,
-    optionGrid: `display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; padding-left: 35px;`,
-    optionItem: `break-inside: avoid; line-height: 1.5;`,
+    questionNumberTd: `vertical-align: top; width: 35px; font-weight: 700; font-size: 1.1em; padding-top: 4px;`,
+    questionTextTd: `vertical-align: top; text-align: left; padding-right: 12px; padding-top: 4px;`,
+    marksTd: `vertical-align: top; text-align: right; width: 60px; font-weight: 600; font-size: 1em; padding-top: 4px;`,
+    optionGrid: `display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; padding-left: 35px;`,
+    optionItem: `break-inside: avoid; line-height: 2.0; display: flex; align-items: baseline;`, // Flex align ensures option label and text align well
     matchTable: `width: 100%; border-collapse: collapse; margin-top: 16px; border: 1px solid #000;`,
-    matchTh: `padding: 8px; border: 1px solid #000; width: 50%; font-weight: 700; text-transform: uppercase; font-size: 0.9em; background-color: #f8fafc;`,
-    matchTd: `padding: 8px; border: 1px solid #000; width: 50%; vertical-align: middle;`,
+    matchTh: `padding: 10px; border: 1px solid #000; width: 50%; font-weight: 700; text-transform: uppercase; font-size: 0.9em; background-color: #f8fafc;`,
+    matchTd: `padding: 10px; border: 1px solid #000; width: 50%; vertical-align: middle; line-height: 1.8;`,
     headerContainer: `text-align: center; width: 100%; margin-bottom: 32px; break-inside: avoid; border-bottom: 2px solid #000; padding-bottom: 16px;`,
     headerSchool: `margin: 0; font-size: 24pt; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; line-height: 1.2; margin-bottom: 8px;`,
     headerSub: `margin: 4px 0; font-size: 14pt; font-weight: 600;`,
-    metaTable: `width: 100%; margin-top: 16px; font-weight: 600; font-size: 1.1em; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 8px 0;`,
-    sectionHeader: `text-align: center; margin: 24px 0 16px; break-inside: avoid; page-break-after: avoid;`,
+    metaTable: `width: 100%; margin-top: 16px; font-weight: 600; font-size: 1.1em; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 10px 0;`,
+    sectionHeader: `text-align: center; margin: 30px 0 20px; break-inside: avoid; page-break-after: avoid;`,
     sectionTitle: `font-weight: 800; text-transform: uppercase; font-size: 1.2em; border-bottom: 2px solid #000; display: inline-block; padding: 0 16px 4px;`,
     sectionMeta: `display: flex; justify-content: space-between; border-bottom: 1px solid #cbd5e1; padding-bottom: 8px; margin-bottom: 24px; font-weight: 600; font-style: italic; color: #475569;`
 };
@@ -55,7 +56,7 @@ const renderOptions = (question: Question): string => {
         const options = question.options as string[];
         // Use a grid layout for better spacing and alignment, robust for PDF
         return `<div style="${styles.optionGrid}">
-            ${options.map((opt, i) => `<div style="${styles.optionItem}"><span style="font-weight: 600; margin-right: 4px;">(${String.fromCharCode(97 + i)})</span> ${formatText(opt)}</div>`).join('')}
+            ${options.map((opt, i) => `<div style="${styles.optionItem}"><span style="font-weight: 600; margin-right: 8px; min-width: 24px;">(${String.fromCharCode(97 + i)})</span> <span>${formatText(opt)}</span></div>`).join('')}
         </div>`;
     } else if (question.type === QuestionType.MatchTheFollowing) {
         let colA: string[] = [];
@@ -100,7 +101,7 @@ const renderQuestion = (question: Question, isAnswerKey: boolean): string => {
     const answerHtml = isAnswerKey ? `
         <div style="margin-top: 12px; padding: 12px; background-color: #f1f5f9; border-left: 4px solid #475569; font-size: 0.95em; break-inside: avoid;">
             <strong style="color: #334155; text-transform: uppercase; font-size: 0.85em; display: block; margin-bottom: 4px;">Solution:</strong>
-            <div style="line-height: 1.5;">${formatText(typeof question.answer === 'string' ? question.answer : JSON.stringify(question.answer))}</div>
+            <div style="line-height: 1.6;">${formatText(typeof question.answer === 'string' ? question.answer : JSON.stringify(question.answer))}</div>
         </div>
     ` : '';
 
@@ -132,7 +133,15 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
     let sectionCount = 0;
     const isAnswerKey = options?.isAnswerKey ?? false;
 
-    let contentHtml = '';
+    // Inject explicit CSS styles for KaTeX to ensure proper sizing and alignment during export
+    let contentHtml = `
+        <style>
+            .katex { font-size: 1.1em; line-height: 1.2; text-rendering: optimizeLegibility; }
+            .katex-display { margin: 0.8em 0; overflow-x: auto; overflow-y: hidden; }
+            .katex-html { overflow: hidden; }
+            img { max-width: 100%; height: auto; display: block; margin: 10px auto; }
+        </style>
+    `;
 
     // Render Header
     const logoSrc = options?.logoConfig?.src;
