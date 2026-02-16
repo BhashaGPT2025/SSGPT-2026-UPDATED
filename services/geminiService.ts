@@ -1,6 +1,7 @@
-import { GoogleGenAI, Type, FunctionDeclaration, Modality, Chat, Part, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Type, FunctionDeclaration, Modality, Chat, Part, GenerateContentResponse, GenerateContentConfig } from "@google/genai";
 import { type FormData, type QuestionPaperData, Question, AnalysisResult } from '../types';
 import { generateHtmlFromPaperData } from "./htmlGenerator";
+import { generatePaperFunctionDeclaration, systemInstruction } from '../constants';
 export { generateHtmlFromPaperData };
 
 const handleApiError = (error: any, context: string) => {
@@ -57,65 +58,13 @@ export const rewriteTranscript = async (rawText: string): Promise<string> => {
     }
 };
 
-// Fix: Add generateChatResponseStream to handle streaming chat responses with dynamic configurations.
-export const generateChatResponseStream = async (
-  chat: Chat,
-  messageParts: Part[],
-  useSearch: boolean,
-  useThinking: boolean,
-): Promise<AsyncIterable<GenerateContentResponse>> => {
-  const config: any = {};
-  if (useSearch) {
-    config.tools = [{ googleSearch: {} }];
-  }
-  if (useThinking) {
-    config.thinkingConfig = { thinkingBudget: 8192 };
-  }
-
-  // The `message` parameter of `sendMessageStream` can take a Part array.
-  // The config object is passed alongside the message.
-  return chat.sendMessageStream({
-    message: messageParts,
-    ...(Object.keys(config).length > 0 && { config }),
-  });
-};
-
-// Fix: Add generateTextToSpeech for text-to-speech functionality.
-export const generateTextToSpeech = async (text: string): Promise<string> => {
-    if (!process.env.API_KEY) throw new Error("API Key not found");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-preview-tts",
-            contents: [{ parts: [{ text }] }],
-            config: {
-                responseModalities: [Modality.AUDIO],
-                speechConfig: {
-                    voiceConfig: {
-                        prebuiltVoiceConfig: { voiceName: 'Kore' }, // A default voice
-                    },
-                },
-            },
-        });
-
-        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (base64Audio) {
-            return base64Audio;
-        }
-        throw new Error("Failed to generate audio from text.");
-    } catch (error) {
-        handleApiError(error, "generateTextToSpeech");
-        throw error;
-    }
-};
-
 
 export const generateQuestionPaper = async (formData: FormData): Promise<QuestionPaperData> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles, modelQuality } = formData;
     
-    const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
+    const modelToUse = modelQuality === 'pro' ? 'gemini-3-flash-preview' : 'gemini-flash-latest';
 
     const finalPrompt = `
 You are a Senior Academic Examiner. Your task is to generate a high-quality, professional examination paper in JSON format.
@@ -201,6 +150,81 @@ Return only a valid JSON array of question objects.
         throw error;
     }
 };
+
+// Fix: Implemented and exported `generateChatResponseStream` to resolve the missing member error.
+export const generateChatResponseStream = async (
+    chat: Chat,
+    messageParts: Part[],
+    useSearch: boolean,
+    useThinking: boolean
+) => {
+    // If no special config is needed, use the efficient, history-aware method.
+    if (!useSearch && !useThinking) {
+        return chat.sendMessageStream(messageParts);
+    }
+
+    // For dynamic configs (search/thinking), a one-off `generateContentStream` call is necessary.
+    // Note: This approach uses the chat history but doesn't automatically update the original Chat object state.
+    if (!process.env.API_KEY) throw new Error("API_KEY is not configured.");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+    const config: GenerateContentConfig = { systemInstruction };
+    let model = 'gemini-flash-lite-latest'; // Default model from chat
+
+    if (useSearch) {
+        // As per guidelines, googleSearch is a standalone tool and requires a compatible model.
+        config.tools = [{ googleSearch: {} }];
+        model = 'gemini-3-flash-preview';
+    } else {
+        // Retain the function calling tool for non-search queries.
+        config.tools = [{ functionDeclarations: [generatePaperFunctionDeclaration] }];
+    }
+
+    if (useThinking) {
+        // Using a safe budget for flash models.
+        config.thinkingConfig = { thinkingBudget: 24576 };
+    }
+
+    const contents = [...chat.history, { role: 'user', parts: messageParts }];
+
+    return ai.models.generateContentStream({
+        model,
+        contents,
+        config,
+    });
+};
+
+// Fix: Implemented and exported `generateTextToSpeech` to resolve the missing member error.
+export const generateTextToSpeech = async (text: string): Promise<string> => {
+    if (!process.env.API_KEY) throw new Error("API_KEY is not configured.");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-tts",
+            contents: [{ parts: [{ text }] }],
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: {
+                    voiceConfig: {
+                        // Using a standard, pleasant voice.
+                        prebuiltVoiceConfig: { voiceName: 'Kore' },
+                    },
+                },
+            },
+        });
+
+        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+
+        if (!base64Audio) {
+            throw new Error("AI did not return any audio data.");
+        }
+        return base64Audio;
+    } catch (error) {
+        handleApiError(error, "generateTextToSpeech");
+        throw error;
+    }
+};
+
 
 export const generateImage = async (prompt: string, aspectRatio: string = '1:1'): Promise<string> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
