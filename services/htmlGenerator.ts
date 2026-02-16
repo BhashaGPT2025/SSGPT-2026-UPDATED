@@ -145,25 +145,26 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
                 border-color: #000 !important;
             }
 
-            /* --- CRITICAL FIX FOR FRACTIONS --- */
+            /* --- FRACTION LAYOUT FIX (FLEXBOX) --- */
             /* 
-               We override KaTeX's absolute positioning (which relies on em-based top offsets)
-               with a robust Flexbox layout. This prevents 'flying' fraction bars in html2canvas.
+               Instead of absolute positioning, we use Flexbox to vertically stack
+               Numerator, Line, and Denominator. This is robust against export engine shifts.
             */
 
-            /* Target the vlist containing the fraction stack (Numerator, Line, Denominator) */
+            /* Target the internal structure of fractions */
+            .katex .mfrac .vlist-t,
+            .katex .mfrac .vlist-t2,
             .katex .mfrac .vlist {
                 display: flex !important;
-                flex-direction: column-reverse !important; /* DOM order is typically Denom -> Line -> Num */
+                flex-direction: column-reverse !important; /* Standard KaTeX DOM order is Denom -> Line -> Num, so reverse it */
                 align-items: center !important;
                 justify-content: center !important;
-                position: static !important; /* Disable absolute positioning */
+                position: static !important;
                 height: auto !important;
-                margin: 0 0.2em !important; /* spacing around fraction */
-                vertical-align: middle !important;
+                width: auto !important;
             }
 
-            /* Reset children (Num/Denom/Line) to be static blocks */
+            /* Children: Numerator, Denominator, Line */
             .katex .mfrac .vlist > span {
                 position: static !important;
                 top: auto !important;
@@ -171,34 +172,33 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
                 left: auto !important;
                 display: block !important;
                 height: auto !important;
-                width: auto !important;
                 margin: 0 !important;
                 padding: 1px 0 !important;
                 text-align: center !important;
                 transform: none !important;
+                line-height: 1 !important;
             }
 
-            /* Style the fraction line specifically */
+            /* Distinct style for the fraction line */
             .katex .mfrac .frac-line {
                 width: 100% !important;
-                border-bottom: 1.5px solid #000 !important;
+                border-bottom: 2px solid #000 !important;
                 height: 0 !important;
                 min-height: 0 !important;
-                margin: 2px 0 !important; /* Space between line and numbers */
-                flex-shrink: 0 !important;
+                margin: 2px 0 !important; /* Gap */
+                background: transparent !important;
                 display: block !important;
                 visibility: visible !important;
-                background-color: transparent !important;
             }
 
-            /* Hide the 'pstrut' ghost element which adds weird height in flex mode */
+            /* Hide ghost elements (struts) that KaTeX uses for spacing */
             .katex .mfrac .pstrut {
                 display: none !important;
             }
             
-            /* Ensure the text inside fractions is visible and centered */
-            .katex .mfrac .mord {
-                display: inline-block !important;
+            /* Ensure text is black and visible */
+            .katex .mord {
+                color: #000 !important;
             }
 
             /* --------------------------------- */
