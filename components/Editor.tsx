@@ -2,9 +2,9 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { generateHtmlFromPaperData } from '../services/htmlGenerator';
 import { QuestionPaperData } from '../types';
-import { UploadIcon } from './icons/UploadIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
-import { ImageControlOverlay } from './EditorImage'; // Reusing this file for the overlay
+import { ImageControlOverlay } from './EditorImage';
+import { EditorToolbar } from './EditorToolbar';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
@@ -33,7 +33,6 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
   // Initialize content once
   useEffect(() => {
     if (editorRef.current && paperData) {
-        // Only set content if empty to prevent overwrites on hot reloads or state shifts
         if (!editorRef.current.innerHTML) {
             const initialHtml = generateHtmlFromPaperData(paperData);
             editorRef.current.innerHTML = initialHtml;
@@ -72,7 +71,6 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
 
   const handleSave = () => {
       if (!editorRef.current) return;
-      // Clean up any internal selection artifacts if they exist
       const content = editorRef.current.innerHTML;
       onSave({
           ...paperData,
@@ -85,12 +83,6 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
   const insertImageAtCursor = (base64Data: string) => {
       if (!editorRef.current) return;
       editorRef.current.focus();
-
-      // Basic Insert
-      // We wrap it in a div to ensure block behavior if dropped between paragraphs,
-      // but execCommand insertImage is safer for cursor position preservation.
-      // However, insertImage doesn't support styling easily. 
-      // We'll insert an img tag directly using range.
       
       const img = document.createElement('img');
       img.src = base64Data;
@@ -98,22 +90,20 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
       img.style.height = 'auto';
       img.style.display = 'block';
       img.style.margin = '10px auto';
-      img.className = 'editor-image'; // Marker class
+      img.className = 'editor-image';
 
       const selection = window.getSelection();
       if (selection && selection.rangeCount > 0 && editorRef.current.contains(selection.anchorNode)) {
           const range = selection.getRangeAt(0);
           range.deleteContents();
           range.insertNode(img);
-          range.collapse(false); // Move cursor after image
+          range.collapse(false);
       } else {
-          // If no selection or selection outside, append to end
           editorRef.current.appendChild(img);
       }
       
-      // Select the new image immediately
       setSelectedImage(img);
-      handleSave(); // Auto-save state
+      handleSave();
   };
 
   const handleFiles = (files: FileList | null) => {
@@ -142,7 +132,7 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
       const target = e.target as HTMLElement;
       if (target.tagName === 'IMG') {
           setSelectedImage(target as HTMLImageElement);
-          e.stopPropagation(); // Prevent text cursor placement on image click
+          e.stopPropagation();
       } else {
           setSelectedImage(null);
       }
@@ -153,11 +143,8 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
     setIsExporting(true);
     
     try {
-        // Temporarily hide the selection overlay if active
         const wasSelected = selectedImage;
         setSelectedImage(null);
-        
-        // Wait for render cycle
         await new Promise(r => setTimeout(r, 50));
 
         const canvas = await html2canvas(editorRef.current, {
@@ -189,8 +176,6 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
         }
 
         pdf.save(`${paperData.subject || 'paper'}.pdf`);
-        
-        // Restore selection
         if (wasSelected) setSelectedImage(wasSelected);
 
     } catch (error) {
@@ -219,32 +204,21 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
         {isDragOver && (
            <div className="absolute inset-0 z-50 bg-indigo-500/10 backdrop-blur-sm flex items-center justify-center border-4 border-indigo-500 border-dashed m-4 rounded-xl pointer-events-none transition-all">
                <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-2xl flex flex-col items-center animate-bounce">
-                   <UploadIcon className="w-16 h-16 text-indigo-600 mb-4" />
                    <p className="text-2xl font-bold text-slate-800 dark:text-white">Drop image to insert</p>
                </div>
            </div>
         )}
 
-      <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-2 flex items-center justify-center gap-4 shadow-sm z-10 h-16 shrink-0">
-        <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors font-medium text-sm"
-        >
-            <UploadIcon className="w-4 h-4" />
-            Insert Image
-        </button>
-        <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={(e) => { handleFiles(e.target.files); if (e.target) e.target.value = ''; }} 
-            className="hidden" 
-            accept="image/*" 
-        />
-        <div className="w-px h-6 bg-slate-300 dark:bg-slate-600 mx-2" />
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-            Click image to edit • Drag corners to resize • Drag & Drop files
-        </p>
-      </div>
+      {/* Editor Toolbar at the top */}
+      <EditorToolbar onInsertImage={() => fileInputRef.current?.click()} />
+      
+      <input 
+          type="file" 
+          ref={fileInputRef} 
+          onChange={(e) => { handleFiles(e.target.files); if (e.target) e.target.value = ''; }} 
+          className="hidden" 
+          accept="image/*" 
+      />
 
       <div className="flex-1 overflow-y-auto p-8 flex justify-center bg-slate-200 dark:bg-slate-950 relative" id="editor-scroller">
         <div className="relative">
@@ -253,7 +227,7 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
                 contentEditable={true}
                 suppressContentEditableWarning={true}
                 onClick={handleEditorClick}
-                onInput={() => {/* Optional: Autosave logic could go here */}}
+                onInput={() => {/* Autosave logic if needed */}}
                 className="bg-white text-black shadow-2xl transition-all prose-lg print:shadow-none outline-none"
                 style={{
                     width: `${A4_WIDTH_PX}px`,
@@ -262,7 +236,6 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
                     padding: '0', 
                 }}
             />
-            {/* The Overlay component handles the UI for the selected image */}
             {selectedImage && (
                 <ImageControlOverlay 
                     imageElement={selectedImage} 
