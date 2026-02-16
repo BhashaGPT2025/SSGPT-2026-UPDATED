@@ -31,7 +31,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, user, page, onNavigate,
     
     const getBackgroundColor = () => {
         if (page === 'edit') return 'bg-slate-200 dark:bg-gray-900';
-        if (page === 'chat') return 'bg-slate-50 dark:bg-black';
         return 'bg-transparent';
     }
 
@@ -51,7 +50,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, user, page, onNavigate,
                 toggleTheme={toggleTheme}
             />
             <main className="flex-1 overflow-y-auto">
-                 <div className={`${page === 'chat' ? 'h-full' : 'p-4 sm:p-6 lg:p-8'}`}>
+                 <div className="p-4 sm:p-6 lg:p-8">
                      {children}
                  </div>
             </main>
