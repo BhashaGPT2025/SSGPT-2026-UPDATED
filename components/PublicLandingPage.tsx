@@ -51,9 +51,6 @@ const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onGetStarted }) =
                 >
                   Get Started Free
                 </button>
-                <p className="mt-4 text-sm font-semibold text-slate-400">
-                  No credit card required
-                </p>
               </div>
             </div>
 
