@@ -16,7 +16,7 @@ const ToolbarButton = ({ onClick, children, active, title, disabled }: any) => (
         onMouseDown={(e) => { e.preventDefault(); onClick(); }}
         disabled={disabled}
         title={title}
-        className={`p-2 rounded-md transition-all duration-200 flex items-center justify-center
+        className={`p-2 rounded-md transition-all duration-200 flex items-center justify-center min-w-[32px]
             ${active 
                 ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 shadow-sm' 
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:shadow-sm'}
@@ -38,13 +38,13 @@ export const StickyToolbar: React.FC<StickyToolbarProps> = ({
     styles 
 }) => {
     return (
-        <div className="sticky top-0 z-30 w-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-700 shadow-sm px-4 py-2 flex items-center gap-1 justify-center flex-wrap print:hidden transition-all">
+        <div className="sticky top-0 z-30 w-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-700 shadow-sm px-4 py-2 flex items-center gap-1 justify-center flex-wrap print:hidden transition-all select-none">
             
             {/* Text Formatting Group */}
             <div className="flex items-center bg-slate-50 dark:bg-slate-800/50 p-1 rounded-lg border border-slate-200 dark:border-slate-700/50">
                 <select 
                     onChange={(e) => onStyleChange('fontName', e.target.value)}
-                    className="h-8 text-sm bg-transparent border-none focus:ring-0 text-slate-700 dark:text-slate-200 w-32 cursor-pointer"
+                    className="h-8 text-sm bg-transparent border-none focus:ring-0 text-slate-700 dark:text-slate-200 w-32 cursor-pointer outline-none"
                     defaultValue="Times New Roman"
                 >
                     <option value="Inter">Inter</option>
@@ -64,12 +64,11 @@ export const StickyToolbar: React.FC<StickyToolbarProps> = ({
                     <span className="underline serif">U</span>
                 </ToolbarButton>
                 <div className="relative ml-1 group">
-                    <div className="w-6 h-6 rounded border border-slate-300 flex items-center justify-center cursor-pointer overflow-hidden">
+                    <div className="w-8 h-8 rounded border border-slate-300 flex items-center justify-center cursor-pointer overflow-hidden hover:shadow-sm" title="Text Color">
                         <input 
                             type="color" 
                             onChange={(e) => onStyleChange('foreColor', e.target.value)}
-                            className="w-8 h-8 -m-1 cursor-pointer p-0 border-0"
-                            title="Text Color"
+                            className="w-[150%] h-[150%] -m-[25%] cursor-pointer p-0 border-0"
                         />
                     </div>
                 </div>
@@ -108,6 +107,7 @@ export const StickyToolbar: React.FC<StickyToolbarProps> = ({
             <div className="flex items-center ml-auto">
                 <button 
                     onClick={onAddPage}
+                    // No preventDefault here as we don't need to preserve text selection for page adding
                     className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 text-white text-sm font-bold rounded-lg shadow-md hover:bg-indigo-700 transition-colors"
                 >
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14"/></svg>
