@@ -72,11 +72,8 @@ You are a Senior Academic Examiner. Your task is to generate a high-quality, pro
 - Use formal academic tone and precise subject terminology appropriate for ${className}.
 
 **MATHEMATICAL & SCIENTIFIC FORMATTING (CRITICAL):**
-1. **LATEX IS MANDATORY:** Use professional LaTeX for ALL math, even simple numbers in equations (e.g., $5 + 3$).
-2. **ESCAPING:** You MUST use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}, \\\\approx) for all LaTeX commands within JSON strings.
-3. **PACKAGING:** Enclose all LaTeX content in single dollar signs: $...$.
-4. **SIMPLICITY:** Use standard LaTeX commands. Avoid complex nesting or obscure packages. Use \\\\frac{}{} for fractions. Avoid \\\\dfrac if possible.
-5. **SPACING:** Do not add extra newlines or weird spacing inside the LaTeX strings.
+- All mathematical content must be in LaTeX, enclosed in single dollar signs ($...$).
+- **JSON ESCAPING IS MANDATORY:** Every LaTeX command backslash must be escaped for JSON. For example, write \`\\frac\` as \`\\\\frac\`. So \`$\\frac{1}{2}$\` becomes \`$\\\\frac{1}{2}$\` in the JSON output. This applies to ALL LaTeX commands.
 
 **QUESTION STRUCTURE RULES:**
 - **NO NUMBERING:** DO NOT include any numbering prefixes like "1.", "Q1", "a)", "(i)", "Column A:" inside the strings. The UI handles numbering.
