@@ -168,8 +168,7 @@ export type Page =
   | 'assignedPapers'
   | 'attendedPapers'
   | 'gallery'
-  | 'imageEditor'
-  | 'chat';
+  | 'imageEditor';
   
 export type Theme = 'light' | 'dark';
 

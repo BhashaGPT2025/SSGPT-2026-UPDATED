@@ -7,7 +7,7 @@ import { StopIcon } from './icons/StopIcon';
 
 // --- ICONS ---
 const CloseIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
-const MuteIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>;
+const MuteIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>;
 
 // --- TOOL DECLARATION ---
 const generatePaperFunctionDeclaration: FunctionDeclaration = { name: 'generatePaper', description: 'Call this function ONLY when all necessary details for creating a question paper have been collected.', parameters: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING }, className: { type: Type.STRING }, subject: { type: Type.STRING }, topics: { type: Type.STRING }, timeAllowed: { type: Type.STRING }, questionDistribution: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { type: { type: Type.STRING, enum: Object.values(QuestionType) }, count: { type: Type.INTEGER }, marks: { type: Type.INTEGER }, difficulty: { type: Type.STRING, enum: Object.values(Difficulty) }, taxonomy: { type: Type.STRING, enum: Object.values(Taxonomy) }, }, required: ['type', 'count', 'marks'] } }, language: { type: Type.STRING }, }, required: ['className', 'subject', 'topics', 'questionDistribution', 'timeAllowed'] } };
@@ -46,7 +46,7 @@ const VoiceAssistant: React.FC<{ onFormReady: (formData: FormData) => void }> = 
             
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             sessionPromiseRef.current = ai.live.connect({
-                model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+                model: 'gemini-2.5-flash-native-audio-preview-12-25',
                 callbacks: {
                     onopen: () => {
                         const source = audioContextRef.current!.createMediaStreamSource(stream);
@@ -99,8 +99,7 @@ const VoiceAssistant: React.FC<{ onFormReady: (formData: FormData) => void }> = 
                         if (msg.toolCall?.functionCalls?.[0]?.name === 'generatePaper') {
                             setVoiceState('processing');
                             const args = msg.toolCall.functionCalls[0].args;
-                            // Fix: Cast args to 'any' to resolve 'reduce' does not exist on type 'unknown' error.
-                            const totalMarks = ((args as any).questionDistribution || []).reduce((acc: number, item: any) => acc + (item.count * item.marks), 0);
+                            const totalMarks = (args.questionDistribution || []).reduce((acc: number, item: any) => acc + (item.count * item.marks), 0);
                             const formData = { ...args, totalMarks } as FormData;
                             onFormReady(formData);
                             setUiState('minimized');
@@ -140,7 +139,7 @@ const VoiceAssistant: React.FC<{ onFormReady: (formData: FormData) => void }> = 
             stopSession();
         }
         return () => { if (voiceState !== 'idle') stopSession(); };
-    }, [uiState, voiceState, startSession, stopSession]);
+    }, [uiState]);
 
     if (uiState === 'minimized') {
         return (
