@@ -12,19 +12,28 @@ const escapeHtml = (unsafe: string | undefined | null): string => {
 
 const formatText = (text: string = ''): string => {
     if (!text) return '';
-    // This regex splits the text by math delimiters ($...$ or $$...$$)
-    // The capturing group in split() ensures the delimiters are included in the resulting array.
     const regex = /(\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g;
     const parts = text.split(regex);
-    
+
+    // Regex to detect simple fractions (e.g., "1/2") and mixed numbers (e.g., "1 1/2").
+    const simpleFractionRegex = /^\s*(\d+\s+)?\d+\s*\/\s*\d+\s*$/;
+
     return parts.map((part, index) => {
         // Math parts are at odd indices because they are the separators captured by the regex.
         if (index % 2 === 1) {
-            // This is a math part (e.g., '$...$'). Return it as is, so KaTeX can render it.
-            return part;
+            const isDisplayMath = part.startsWith('$$');
+            const mathContent = part.substring(isDisplayMath ? 2 : 1, part.length - (isDisplayMath ? 2 : 1));
+
+            // Check if the content is a simple inline fraction/mixed number AND does not contain LaTeX commands.
+            if (!isDisplayMath && simpleFractionRegex.test(mathContent) && !mathContent.includes('\\')) {
+                // It's a simple fraction. Render as plain text, without the delimiters.
+                return escapeHtml(mathContent).replace(/\n/g, '<br/>');
+            } else {
+                // It's a complex expression or a display math block. Let KaTeX handle it.
+                return part;
+            }
         } else {
-            // This is a regular text part. Escape HTML entities to prevent injection
-            // and convert newlines to <br> tags for display.
+            // This is a regular text part. Escape HTML and handle newlines.
             return escapeHtml(part).replace(/\n/g, '<br/>');
         }
     }).join('');
