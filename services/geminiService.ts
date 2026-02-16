@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, FunctionDeclaration, Modality, Chat, Part, GenerateContentResponse } from "@google/genai";
 import { type FormData, type QuestionPaperData, Question, AnalysisResult } from '../types';
 import { generateHtmlFromPaperData } from "./htmlGenerator";
@@ -11,31 +12,22 @@ const handleApiError = (error: any, context: string) => {
         throw new Error("The content was flagged by safety filters. Please adjust your topics to comply with academic standards.");
     }
     
-    // Check for quota-related errors
     if (errorMessage.includes("quota") || errorMessage.includes("resource has been exhausted")) {
         throw new Error(
-            "API Quota Exceeded.\n\n" +
-            "You've reached the request limit for your current API key plan. Here's what you can do:\n\n" +
-            "1. Try again in a few minutes.\n" +
-            "2. Use the 'Fast (Flash)' model setting for lower usage.\n" +
-            "3. Upgrade your project to a paid plan for higher limits. Visit:\n" +
-            "ai.google.dev/gemini-api/docs/billing"
+            "API Quota Exceeded. Try again later or upgrade your plan."
         );
     }
     
-    throw new Error(`AI Generation Failed (${context}). Please check your connection or try again. If the issue persists, your API key might be invalid.`);
+    throw new Error(`AI Generation Failed (${context}). Please check your connection or try again.`);
 };
 
-/**
- * Robustly cleans and parses JSON from AI responses, handling markdown artifacts.
- */
 const parseAiJson = (text: string) => {
     try {
         const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
         return JSON.parse(cleanedText);
     } catch (e) {
         console.error("JSON Parse Error. Raw text:", text);
-        throw new Error("The AI returned an invalid response format. Using Gemini 3 might require a slightly different prompt structure if errors persist.");
+        throw new Error("The AI returned an invalid response format.");
     }
 };
 
@@ -44,20 +36,17 @@ export const rewriteTranscript = async (rawText: string): Promise<string> => {
     if (!rawText.trim()) return rawText;
     
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `Rewrite the following user utterance into a clean, professional, and grammatically correct sentence. Correct any mistakes and add any missing words to make it sound like a formal request. Do not add any extra commentary, just provide the rewritten sentence.\n\nRaw utterance: "${rawText}"\n\nRewritten sentence:`;
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
-            contents: prompt,
+            contents: `Rewrite cleanly: "${rawText}"`,
         });
         return response.text?.trim() || rawText;
     } catch (error) {
-        console.error("Error rewriting transcript:", error);
-        return rawText; // fallback to raw text on error
+        return rawText; 
     }
 };
 
-// Fix: Add generateChatResponseStream to handle streaming chat responses with dynamic configurations.
 export const generateChatResponseStream = async (
   chat: Chat,
   messageParts: Part[],
@@ -65,22 +54,15 @@ export const generateChatResponseStream = async (
   useThinking: boolean,
 ): Promise<AsyncIterable<GenerateContentResponse>> => {
   const config: any = {};
-  if (useSearch) {
-    config.tools = [{ googleSearch: {} }];
-  }
-  if (useThinking) {
-    config.thinkingConfig = { thinkingBudget: 8192 };
-  }
+  if (useSearch) config.tools = [{ googleSearch: {} }];
+  if (useThinking) config.thinkingConfig = { thinkingBudget: 8192 };
 
-  // The `message` parameter of `sendMessageStream` can take a Part array.
-  // The config object is passed alongside the message.
   return chat.sendMessageStream({
     message: messageParts,
     ...(Object.keys(config).length > 0 && { config }),
   });
 };
 
-// Fix: Add generateTextToSpeech for text-to-speech functionality.
 export const generateTextToSpeech = async (text: string): Promise<string> => {
     if (!process.env.API_KEY) throw new Error("API Key not found");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -92,23 +74,20 @@ export const generateTextToSpeech = async (text: string): Promise<string> => {
                 responseModalities: [Modality.AUDIO],
                 speechConfig: {
                     voiceConfig: {
-                        prebuiltVoiceConfig: { voiceName: 'Kore' }, // A default voice
+                        prebuiltVoiceConfig: { voiceName: 'Kore' }, 
                     },
                 },
             },
         });
 
         const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (base64Audio) {
-            return base64Audio;
-        }
-        throw new Error("Failed to generate audio from text.");
+        if (base64Audio) return base64Audio;
+        throw new Error("Failed to generate audio.");
     } catch (error) {
         handleApiError(error, "generateTextToSpeech");
         throw error;
     }
 };
-
 
 export const generateQuestionPaper = async (formData: FormData): Promise<QuestionPaperData> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
@@ -118,29 +97,14 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
     const finalPrompt = `
-You are a Senior Academic Examiner. Your task is to generate a high-quality, professional examination paper in JSON format.
-
-**CORE LANGUAGE REQUIREMENT:**
-- Generate the ENTIRE assessment (questions, options, matches, solutions) strictly in: **${language}**.
-- Use formal academic tone and precise subject terminology appropriate for ${className}.
-
-**MATHEMATICAL & SCIENTIFIC FORMATTING (CRITICAL):**
-1. **LATEX FOR ALL MATH:** Use professional LaTeX for ALL formulas, equations, variables ($x$), symbols (multiplication $\\times$, division $\\div$, plus/minus $\\pm$, etc.), and units ($kg \\cdot m/s^2$).
-2. **ESCAPING:** You MUST use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}) for all LaTeX commands within JSON strings.
-3. **PACKAGING:** Enclose all LaTeX content in single dollar signs: $...$.
-
-**QUESTION STRUCTURE RULES:**
-- **NO NUMBERING:** DO NOT include any numbering prefixes like "1.", "Q1", "a)", "(i)", "Column A:" inside the strings.
-- **Multiple Choice:** Return exactly 4 options as a plain array of strings.
-- **Match the Following:** Return an object for 'options': {"columnA": ["Item 1", "Item 2"...], "columnB": ["Match for 2", "Match for 1"...]}. Column B MUST be shuffled.
-- **Answer Key:** The "answer" field must contain a detailed model solution or the correct choice.
-
-**PAPER PARAMETERS:**
+You are a Senior Academic Examiner. Generate a question paper in JSON format.
+Language: **${language}**.
 Subject: ${subject} | Grade: ${className} | Topics: ${topics} | Total Marks: ${totalMarks} | Time: ${timeAllowed}
-Mix: ${JSON.stringify(questionDistribution)}
+Structure: ${JSON.stringify(questionDistribution)}
 ${sourceMaterials ? `Context: ${sourceMaterials}` : ''}
 
-Return only a valid JSON array of question objects.
+Use LaTeX ($...$) for math. Double escape backslashes (\\\\).
+Return a JSON array of question objects.
 `;
 
     try {
@@ -163,7 +127,7 @@ Return only a valid JSON array of question objects.
                         properties: {
                             type: { type: Type.STRING },
                             questionText: { type: Type.STRING },
-                            options: { description: "Array of strings for MCQ, or {columnA:[], columnB:[]} for Matching." },
+                            options: { description: "Array of strings or object for matching" },
                             answer: { type: Type.STRING },
                             marks: { type: Type.NUMBER },
                             difficulty: { type: Type.STRING },
@@ -176,10 +140,7 @@ Return only a valid JSON array of question objects.
         });
 
         const generatedQuestionsRaw = parseAiJson(response.text as string);
-        
-        if (!Array.isArray(generatedQuestionsRaw) || generatedQuestionsRaw.length === 0) {
-            throw new Error("AI failed to produce content for the paper.");
-        }
+        if (!Array.isArray(generatedQuestionsRaw)) throw new Error("Invalid AI response");
 
         const processedQuestions: Question[] = generatedQuestionsRaw.map((q, index) => ({
             ...q,
@@ -199,6 +160,45 @@ Return only a valid JSON array of question objects.
     } catch (error) {
         handleApiError(error, "generateQuestionPaper");
         throw error;
+    }
+};
+
+// New function to handle direct HTML editing
+export const editPaperContent = async (currentHtml: string, instruction: string): Promise<string> => {
+    if (!process.env.API_KEY) throw new Error("API Key missing");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    // We only send a portion of HTML to save tokens if it's too large, 
+    // but for now assume paper fits in context.
+    const prompt = `
+    You are an expert academic editor.
+    User Instruction: "${instruction}"
+    
+    TASK: Modify the provided HTML content based *strictly* on the user's instruction.
+    RULES:
+    1. Return ONLY the valid, updated HTML string.
+    2. Do NOT use markdown code blocks (no \`\`\`html).
+    3. Maintain existing styles and classes.
+    4. Ensure Math is formatted with LaTeX $...$.
+    5. Do not add generic <html> or <body> tags, just the inner content.
+
+    CURRENT HTML:
+    ${currentHtml}
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: prompt,
+        });
+        
+        let text = response.text || currentHtml;
+        // Cleanup if model adds markdown despite instructions
+        text = text.replace(/^```html\s*/i, '').replace(/```$/, '');
+        return text;
+    } catch (e) {
+        console.error("AI Edit failed", e);
+        throw e;
     }
 };
 
@@ -222,22 +222,14 @@ export const generateImage = async (prompt: string, aspectRatio: string = '1:1')
 };
 
 export const createEditingChat = (paperData: QuestionPaperData) => {
+    // Legacy placeholder, actual editing is now done via editPaperContent
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    return ai.chats.create({
-        model: "gemini-3-flash-preview",
-        config: {
-            systemInstruction: `You are an expert academic editor.
-            STRICT MATH: Use professional LaTeX with double backslashes inside JSON. 
-            NO REDUNDANT NUMBERING: The system handles all layout numbering. 
-            Preserve the paper's original language strictly.`
-        }
-    });
+    return ai.chats.create({ model: "gemini-3-flash-preview" });
 };
 
 export const getAiEditResponse = async (chat: Chat, instruction: string) => {
-    const response = await chat.sendMessage({ message: instruction });
-    return { functionCalls: response.functionCalls || null, text: response.text || null };
+    return { text: "Use editPaperContent instead." };
 };
 
 export const analyzePastedText = async (text: string): Promise<AnalysisResult> => {
