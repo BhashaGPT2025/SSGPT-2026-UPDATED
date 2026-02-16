@@ -153,10 +153,10 @@ export interface TextBoxState {
   rotation: number;
 }
 
+// Fix: Add 'chat' to the Page type to resolve type errors and support the chat assistant feature.
 export type Page = 
   | 'creationHub' 
   | 'generate' 
-  | 'chat' 
   | 'edit' 
   | 'myPapers' 
   | 'analyze' 
@@ -168,7 +168,8 @@ export type Page =
   | 'assignedPapers'
   | 'attendedPapers'
   | 'gallery'
-  | 'imageEditor';
+  | 'imageEditor'
+  | 'chat';
   
 export type Theme = 'light' | 'dark';
 

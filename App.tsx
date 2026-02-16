@@ -3,7 +3,6 @@ import { type Part } from '@google/genai';
 import GeneratorForm from './components/GeneratorForm';
 import Editor from './components/Editor';
 import Loader from './components/Loader';
-import ChatbotInterface from './components/ChatbotInterface';
 import MyPapers from './components/MyPapers';
 import Settings from './components/Settings';
 import { type FormData, type QuestionPaperData, type User, type Page, type Theme, UploadedImage } from './types';
@@ -23,6 +22,8 @@ import AssignedPapers from './components/AssignedPapers';
 import AttendedPapers from './components/AttendedPapers';
 import PublicPaperView from './components/PublicPaperView';
 import Header from './Header';
+// Fix: Import the ChatbotInterface component to be used for the 'chat' page.
+import ChatbotInterface from './components/ChatbotInterface';
 import { ImageGallery } from './components/ImageGallery';
 import { ProImageEditor } from './components/ProImageEditor';
 
@@ -354,6 +355,9 @@ function App() {
         switch (page) {
           case 'teacherDashboard':
             return <TeacherDashboard user={currentUser} papers={papers} onNavigate={handleNavigate} onEditPaper={handleEditPaper} onRenamePaper={handleRenamePaper} onDuplicatePaper={handleDuplicatePaper} onDeletePaper={handleDeletePaper}/>;
+          // Fix: Added a case for the 'chat' page to render the ChatbotInterface.
+          case 'chat':
+            return <ChatbotInterface onGenerate={handleGenerate} />;
           case 'creationHub':
             return <CreationHub onNavigate={handleNavigate} onStartAnalysis={handleStartAnalysis} onStartImageAnalysis={handleStartImageAnalysis} />;
           case 'generate':
@@ -369,8 +373,6 @@ function App() {
             return <MyPapers user={currentUser} papers={papers} onEdit={handleEditPaper} onDelete={handleDeletePaper} onGenerateNew={() => handleNavigate('creationHub')} onRename={handleRenamePaper} onDuplicate={handleDuplicatePaper} />;
           case 'questionBank':
             return <QuestionBank />;
-          case 'chat':
-            return <ChatbotInterface onGenerate={handleGenerate} />;
           case 'settings':
             return <Settings user={currentUser} theme={theme} toggleTheme={toggleTheme} onLogout={handleLogout} />;
           case 'gallery':
@@ -384,6 +386,9 @@ function App() {
         switch (page) {
             case 'studentDashboard':
                 return <StudentDashboard user={currentUser} onNavigate={handleNavigate} onViewPaperFromUrl={handleStudentViewPaperFromUrl} />;
+            // Fix: Added a case for the 'chat' page to render the ChatbotInterface.
+            case 'chat':
+                return <ChatbotInterface onGenerate={handleGenerate} />;
             case 'practice':
                 return <PracticeGenerator onSubmit={handleGenerate} isLoading={isLoading} user={currentUser} />;
             case 'assignedPapers':

@@ -5,11 +5,11 @@ import { KeyIcon } from './components/icons/KeyIcon';
 import { SSGPT_LOGO_URL } from './constants';
 import { AnimatedButton } from './components/AnimatedButton';
 
-type Page = 'creationHub' | 'generate' | 'chat' | 'settings' | 'edit' | 'myPapers';
+type Page = 'creationHub' | 'generate' | 'edit' | 'myPapers' | 'settings';
 
 const UndoIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>;
 const RedoIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 0 9 9 9 9 0 0 0 6-2.3L21 13"/></svg>;
-const ExportIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
+const ExportIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
 
 interface HeaderProps {
     page: Page;
@@ -112,7 +112,7 @@ const Header: React.FC<HeaderProps> = ({ page, onNavigate, editorActions }) => {
                   <div className="flex items-center gap-2 sm:gap-3">
                     <div className="hidden sm:block">
                         <AnimatedButton 
-                            icon={editorActions.isAnswerKeyMode ? <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> : <KeyIcon className="w-5 h-5" />} 
+                            icon={editorActions.isAnswerKeyMode ? <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> : <KeyIcon className="w-5 h-5" />} 
                             label={editorActions.isAnswerKeyMode ? "Back to Paper" : "Answer Key"} 
                             onClick={editorActions.onAnswerKey}
                             variant="glass"
@@ -142,7 +142,6 @@ const Header: React.FC<HeaderProps> = ({ page, onNavigate, editorActions }) => {
   const navLinks = [
       { label: "Home", page: 'creationHub' as Page, active: page === 'creationHub' },
       { label: "Generator", page: 'generate' as Page, active: page === 'generate' },
-      { label: "Chatbot", page: 'chat' as Page, active: page === 'chat' },
       { label: "My Papers", page: 'myPapers' as Page, active: page === 'myPapers' },
       { label: "Settings", page: 'settings' as Page, active: page === 'settings' }
   ];
