@@ -39,6 +39,77 @@ const parseAiJson = (text: string) => {
     }
 };
 
+export const rewriteTranscript = async (rawText: string): Promise<string> => {
+    if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
+    if (!rawText.trim()) return rawText;
+    
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const prompt = `Rewrite the following user utterance into a clean, professional, and grammatically correct sentence. Correct any mistakes and add any missing words to make it sound like a formal request. Do not add any extra commentary, just provide the rewritten sentence.\n\nRaw utterance: "${rawText}"\n\nRewritten sentence:`;
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: prompt,
+        });
+        return response.text?.trim() || rawText;
+    } catch (error) {
+        console.error("Error rewriting transcript:", error);
+        return rawText; // fallback to raw text on error
+    }
+};
+
+// Fix: Add generateChatResponseStream to handle streaming chat responses with dynamic configurations.
+export const generateChatResponseStream = async (
+  chat: Chat,
+  messageParts: Part[],
+  useSearch: boolean,
+  useThinking: boolean,
+): Promise<AsyncIterable<GenerateContentResponse>> => {
+  const config: any = {};
+  if (useSearch) {
+    config.tools = [{ googleSearch: {} }];
+  }
+  if (useThinking) {
+    config.thinkingConfig = { thinkingBudget: 8192 };
+  }
+
+  // The `message` parameter of `sendMessageStream` can take a Part array.
+  // The config object is passed alongside the message.
+  return chat.sendMessageStream({
+    message: messageParts,
+    ...(Object.keys(config).length > 0 && { config }),
+  });
+};
+
+// Fix: Add generateTextToSpeech for text-to-speech functionality.
+export const generateTextToSpeech = async (text: string): Promise<string> => {
+    if (!process.env.API_KEY) throw new Error("API Key not found");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-tts",
+            contents: [{ parts: [{ text }] }],
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: {
+                    voiceConfig: {
+                        prebuiltVoiceConfig: { voiceName: 'Kore' }, // A default voice
+                    },
+                },
+            },
+        });
+
+        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (base64Audio) {
+            return base64Audio;
+        }
+        throw new Error("Failed to generate audio from text.");
+    } catch (error) {
+        handleApiError(error, "generateTextToSpeech");
+        throw error;
+    }
+};
+
+
 export const generateQuestionPaper = async (formData: FormData): Promise<QuestionPaperData> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -54,7 +125,7 @@ You are a Senior Academic Examiner. Your task is to generate a high-quality, pro
 - Use formal academic tone and precise subject terminology appropriate for ${className}.
 
 **MATHEMATICAL & SCIENTIFIC FORMATTING (CRITICAL):**
-1. **LATEX FOR ALL MATH:** Use professional LaTeX for ALL formulas, equations, variables ($x$), symbols (multiplication \\times, division \\div, plus/minus \\pm, etc.), and units ($kg \\cdot m/s^2$).
+1. **LATEX FOR ALL MATH:** Use professional LaTeX for ALL formulas, equations, variables ($x$), symbols (multiplication $\\times$, division $\\div$, plus/minus $\\pm$, etc.), and units ($kg \\cdot m/s^2$).
 2. **ESCAPING:** You MUST use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}) for all LaTeX commands within JSON strings.
 3. **PACKAGING:** Enclose all LaTeX content in single dollar signs: $...$.
 
@@ -189,38 +260,4 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
         config: { responseMimeType: "application/json" }
     });
     return parseAiJson(response.text as string) as AnalysisResult;
-};
-
-// Fix: Add and export generateChatResponseStream to resolve import error.
-export const generateChatResponseStream = async (chat: Chat, messageParts: Part[], useSearch: boolean, useThinking: boolean) => {
-    // NOTE: The current implementation of `chat.sendMessageStream` may not support overriding
-    // configuration like `tools` or `thinkingConfig` on a per-message basis.
-    // The `useSearch` and `useThinking` flags are ignored here to prevent breaking existing chat functionality. 
-    // To support this, a refactor to manually manage chat history with `generateContentStream` would be needed.
-    if (useSearch) {
-        console.warn("`useSearch` is not supported in this chat implementation and is being ignored.");
-    }
-    if (useThinking) {
-        console.warn("`useThinking` is not supported in this chat implementation and is being ignored.");
-    }
-    return chat.sendMessageStream({ message: messageParts });
-};
-
-// Fix: Add and export generateTextToSpeech to resolve import error.
-export const generateTextToSpeech = async (text: string): Promise<string> => {
-    if (!process.env.API_KEY) throw new Error("API key not found");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text }] }],
-        config: {
-            responseModalities: [Modality.AUDIO],
-        },
-    });
-
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) {
-        throw new Error("AI did not return audio data.");
-    }
-    return base64Audio;
 };

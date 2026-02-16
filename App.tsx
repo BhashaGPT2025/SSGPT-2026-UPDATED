@@ -24,6 +24,7 @@ import PublicPaperView from './components/PublicPaperView';
 import Header from './Header';
 import { ImageGallery } from './components/ImageGallery';
 import { ProImageEditor } from './components/ProImageEditor';
+import VoiceAssistant from './components/VoiceAssistant';
 
 
 function App() {
@@ -42,6 +43,7 @@ function App() {
   const [publicPaper, setPublicPaper] = useState<QuestionPaperData | null>(null);
   
   const [selectedImageForEdit, setSelectedImageForEdit] = useState<UploadedImage | null>(null);
+  const [voiceFormData, setVoiceFormData] = useState<Partial<FormData> | null>(null);
 
   const editorRef = useRef<any>(null);
   // A simple state to force re-render when the editor is ready, ensuring the ref is connected.
@@ -170,6 +172,11 @@ function App() {
 
   }, [currentUser]);
   
+  const handleVoiceAssistantComplete = (formData: FormData) => {
+    setVoiceFormData(formData);
+    handleNavigate('generate');
+  };
+
   const handleAnalysisComplete = (paper: QuestionPaperData) => {
     setIsLoading(true);
     setError(null);
@@ -356,7 +363,7 @@ function App() {
           case 'creationHub':
             return <CreationHub onNavigate={handleNavigate} onStartAnalysis={handleStartAnalysis} onStartImageAnalysis={handleStartImageAnalysis} />;
           case 'generate':
-            return <GeneratorForm onSubmit={handleGenerate} isLoading={isLoading} user={currentUser} />;
+            return <GeneratorForm onSubmit={handleGenerate} isLoading={isLoading} user={currentUser} initialData={voiceFormData} onClearInitialData={() => setVoiceFormData(null)} />;
           case 'analyze':
             if (textToAnalyze) return <AnalysisScreen textToAnalyze={textToAnalyze} onComplete={handleAnalysisComplete} onCancel={() => handleNavigate('creationHub')} />;
             if (imagesToAnalyze) return <AnalysisScreen imagesToAnalyze={imagesToAnalyze} onComplete={handleAnalysisComplete} onCancel={() => handleNavigate('creationHub')} />;
@@ -438,6 +445,7 @@ function App() {
         >
         {renderContent()}
       </AppLayout>
+      {currentUser && <VoiceAssistant onFormReady={handleVoiceAssistantComplete} />}
     </div>
   );
 }

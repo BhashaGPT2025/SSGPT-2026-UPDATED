@@ -6,6 +6,8 @@ interface GeneratorFormProps {
   onSubmit: (formData: FormData) => void;
   isLoading: boolean;
   user: User;
+  initialData?: Partial<FormData> | null;
+  onClearInitialData?: () => void;
 }
 
 const PlusIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -41,7 +43,7 @@ const FormField: React.FC<{name: string, label: string, value: string, onChange:
     )
 }
 
-const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user }) => {
+const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user, initialData, onClearInitialData }) => {
   const [formData, setFormData] = useState({
     schoolName: user.defaultSchoolName || '',
     className: '',
@@ -53,6 +55,20 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
     sourceMode: 'reference' as 'strict' | 'reference',
     modelQuality: 'flash' as 'flash' | 'pro',
   });
+  
+  useEffect(() => {
+    if (initialData) {
+        setFormData(prev => ({ 
+            ...prev, 
+            ...initialData,
+            schoolName: initialData.schoolName || prev.schoolName,
+         }));
+        if(initialData.questionDistribution) {
+            setQuestionDistribution(initialData.questionDistribution);
+        }
+        onClearInitialData?.();
+    }
+  }, [initialData, onClearInitialData]);
   
   useEffect(() => {
     setFormData(prev => ({...prev, schoolName: user.defaultSchoolName || ''}));
