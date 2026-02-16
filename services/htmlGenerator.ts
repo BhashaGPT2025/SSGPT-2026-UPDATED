@@ -11,9 +11,51 @@ const escapeHtml = (unsafe: string | undefined | null): string => {
 }
 
 const formatText = (text: string = ''): string => {
-    const escaped = escapeHtml(text);
-    // Replace newlines with <br> but ensure there is some spacing
-    return escaped.trim().replace(/\n/g, '<br/>');
+    if (!text) return '';
+
+    // This regex splits the text by math delimiters ($...$ or $$...$$)
+    const regex = /(\$\$[\s\S]*?\$\$|\$[\s\S]*?\$)/g;
+    const parts = text.split(regex);
+    
+    return parts.map((part, index) => {
+        // Math parts are at odd indices because they are the captured separators.
+        if (index % 2 === 1) {
+            const isDisplayMath = part.startsWith('$$');
+            const delimiter = isDisplayMath ? '$$' : '$';
+            const mathContent = part.substring(delimiter.length, part.length - delimiter.length);
+
+            // Regex for a string that is ONLY a \frac{...}{...}
+            const singleFracRegex = /^\s*\\frac{([^}]+)}{([^}]+)}\s*$/;
+            const match = mathContent.match(singleFracRegex);
+
+            if (!isDisplayMath && match) {
+                // If the entire inline math content is just one fraction, convert to plain text.
+                return escapeHtml(`${match[1]}/${match[2]}`);
+            }
+
+            // Regex for simple numeric fractions like "1/2" or "1 1/2"
+            const simpleNumericFractionRegex = /^\s*(\d+\s+)?\d+\s*\/\s*\d+\s*$/;
+            if (!isDisplayMath && simpleNumericFractionRegex.test(mathContent) && !mathContent.includes('\\')) {
+                // If it's a simple numeric fraction, render as plain text.
+                return escapeHtml(mathContent);
+            }
+
+            // For all other cases, if there are any \frac commands, replace them with slash notation.
+            // This handles expressions like "1 + \frac{1}{2}".
+            const fracRegex = /\\frac{([^}]+)}{([^}]+)}/g;
+            if (fracRegex.test(mathContent)) {
+                 const simplifiedContent = mathContent.replace(fracRegex, '($1)/($2)');
+                 // Return it with delimiters for KaTeX to process the rest of the expression.
+                 return `${delimiter}${simplifiedContent}${delimiter}`;
+            }
+
+            // If no fraction conversions were applied, return the original math part for KaTeX.
+            return part;
+        } else { 
+            // This is a regular text part. Escape HTML and handle newlines.
+            return escapeHtml(part).replace(/\n/g, '<br/>');
+        }
+    }).join('');
 };
 
 const toRoman = (num: number): string => {
@@ -132,7 +174,37 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
     let sectionCount = 0;
     const isAnswerKey = options?.isAnswerKey ?? false;
 
-    let contentHtml = '';
+    let contentHtml = `
+        <style>
+            /* Base math styles for KaTeX */
+            .katex { 
+                font-size: 1.1em !important; 
+                line-height: 1.2 !important; 
+                vertical-align: baseline !important;
+                color: #000 !important;
+            }
+            .katex-display {
+                display: block;
+                margin: 1em 0;
+                text-align: center;
+            }
+            
+            /* Ensure all math text is black for export */
+            .katex * {
+                color: #000 !important;
+                border-color: #000 !important;
+            }
+
+            @media print {
+               body {
+                  -webkit-print-color-adjust: exact;
+                  print-color-adjust: exact;
+               }
+            }
+            
+            img { max-width: 100%; height: auto; display: block; margin: 8px auto; }
+        </style>
+    `;
 
     // Render Header
     const logoSrc = options?.logoConfig?.src;
