@@ -29,7 +29,6 @@ interface EditorProps {
 
 const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, onReady }, ref) => {
   const [isExporting, setIsExporting] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const editor = useEditor({
@@ -100,29 +99,16 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
     canRedo: editor?.can().redo(),
   }));
 
-  const insertImage = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      editor?.chain().focus().setImage({ src: event.target?.result as string }).run();
-    };
-    reader.readAsDataURL(file);
-  };
-
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) insertImage(file);
-    if (e.target) e.target.value = '';
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      if (file.type.startsWith('image/')) {
-        insertImage(file);
-      }
+    if (file && editor) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        editor.chain().focus().setImage({ src: event.target?.result as string }).run();
+      };
+      reader.readAsDataURL(file);
     }
+    if (e.target) e.target.value = '';
   };
 
   const handleExportPDF = async () => {
@@ -180,27 +166,12 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
   }
 
   return (
-    <div 
-        className="flex flex-col h-full bg-slate-100 dark:bg-slate-900 overflow-hidden relative"
-        onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-        onDragEnter={(e) => { e.preventDefault(); setIsDragOver(true); }}
-        onDragLeave={(e) => { e.preventDefault(); setIsDragOver(false); }}
-        onDrop={handleDrop}
-    >
+    <div className="flex flex-col h-full bg-slate-100 dark:bg-slate-900 overflow-hidden">
         {isExporting && (
             <div className="fixed inset-0 bg-black/80 z-[100] flex flex-col items-center justify-center text-white">
                 <SpinnerIcon className="w-12 h-12 mb-4" />
                 <p className="text-xl font-bold">Generating PDF...</p>
             </div>
-        )}
-
-        {isDragOver && (
-           <div className="absolute inset-0 z-50 bg-indigo-500/10 backdrop-blur-sm flex items-center justify-center border-4 border-indigo-500 border-dashed m-4 rounded-xl pointer-events-none transition-all">
-               <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-2xl flex flex-col items-center animate-bounce">
-                   <UploadIcon className="w-16 h-16 text-indigo-600 mb-4" />
-                   <p className="text-2xl font-bold text-slate-800 dark:text-white">Drop image to insert</p>
-               </div>
-           </div>
         )}
 
       <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-2 flex items-center justify-center gap-4 shadow-sm z-10 h-16 shrink-0">
@@ -220,7 +191,7 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
         />
         <div className="w-px h-6 bg-slate-300 dark:bg-slate-600 mx-2" />
         <p className="text-xs text-slate-500 dark:text-slate-400">
-            Click anywhere to edit text • Drag image handles to resize • Drag & Drop to upload
+            Click anywhere to edit text • Drag image handles to resize
         </p>
       </div>
 
