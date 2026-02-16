@@ -1,15 +1,10 @@
 
-import React, { useCallback, useRef, useState, useEffect } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Underline from '@tiptap/extension-underline';
-import TextAlign from '@tiptap/extension-text-align';
-import Placeholder from '@tiptap/extension-placeholder';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { generateHtmlFromPaperData } from '../services/htmlGenerator';
 import { QuestionPaperData } from '../types';
-import { CustomImage } from './EditorImage';
 import { UploadIcon } from './icons/UploadIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
+import { ImageControlOverlay } from './EditorImage'; // Reusing this file for the overlay
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
@@ -27,117 +22,145 @@ interface EditorProps {
   onReady: () => void;
 }
 
-const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, onReady }, ref) => {
+const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, onReady, onSave }, ref) => {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const [isExporting, setIsExporting] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Underline,
-      TextAlign.configure({
-        types: ['heading', 'paragraph', 'image'],
-      }),
-      Placeholder.configure({
-        placeholder: 'Start typing your question paper...',
-      }),
-      CustomImage.configure({
-        inline: true,
-        allowBase64: true,
-      }),
-    ],
-    content: '', 
-    editorProps: {
-      attributes: {
-        class: 'prose max-w-none focus:outline-none min-h-[1000px] p-12 outline-none',
-      },
-      handleDrop: (view, event, slice, moved) => {
-        if (!moved && event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
-          const file = event.dataTransfer.files[0];
-          if (file.type.startsWith('image/')) {
-            event.preventDefault();
-            const reader = new FileReader();
-            reader.onload = (e) => {
-              const { schema } = view.state;
-              const coordinates = view.posAtCoords({ left: event.clientX, top: event.clientY });
-              if (coordinates) {
-                const node = schema.nodes.image.create({ src: e.target?.result });
-                const transaction = view.state.tr.insert(coordinates.pos, node);
-                view.dispatch(transaction);
-              }
-            };
-            reader.readAsDataURL(file);
-            return true;
-          }
-        }
-        return false;
-      }
-    },
-  });
-
+  const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
+  
+  // Initialize content once
   useEffect(() => {
-    if (editor && paperData) {
-      // Small delay to ensure editor is mounted
-      setTimeout(() => {
-          const initialHtml = generateHtmlFromPaperData(paperData);
-          editor.commands.setContent(initialHtml);
-          onReady();
-      }, 100);
+    if (editorRef.current && paperData) {
+        // Only set content if empty to prevent overwrites on hot reloads or state shifts
+        if (!editorRef.current.innerHTML) {
+            const initialHtml = generateHtmlFromPaperData(paperData);
+            editorRef.current.innerHTML = initialHtml;
+        }
+        onReady();
     }
-  }, [editor, paperData, onReady]);
+  }, [paperData, onReady]);
 
+  // Handle outside clicks to deselect images
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+        if (selectedImage && editorRef.current && !editorRef.current.contains(e.target as Node)) {
+            setSelectedImage(null);
+        }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [selectedImage]);
+
+  // Expose methods to parent
   React.useImperativeHandle(ref, () => ({
-    handleSaveAndExitClick: onSaveAndExit,
+    handleSaveAndExitClick: () => {
+        handleSave();
+        onSaveAndExit();
+    },
     openExportModal: handleExportPDF,
     paperSubject: paperData.subject,
     openAnswerKeyModal: () => {},
     isAnswerKeyMode: false,
     isSaving: false,
-    undo: () => editor?.chain().focus().undo().run(),
-    redo: () => editor?.chain().focus().redo().run(),
-    canUndo: editor?.can().undo(),
-    canRedo: editor?.can().redo(),
+    undo: () => document.execCommand('undo'),
+    redo: () => document.execCommand('redo'),
+    canUndo: true, 
+    canRedo: true, 
   }));
 
-  const insertImage = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      editor?.chain().focus().setImage({ src: event.target?.result as string }).run();
-    };
-    reader.readAsDataURL(file);
+  const handleSave = () => {
+      if (!editorRef.current) return;
+      // Clean up any internal selection artifacts if they exist
+      const content = editorRef.current.innerHTML;
+      onSave({
+          ...paperData,
+          htmlContent: content
+      });
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) insertImage(file);
-    if (e.target) e.target.value = '';
+  // --- Image Handling ---
+
+  const insertImageAtCursor = (base64Data: string) => {
+      if (!editorRef.current) return;
+      editorRef.current.focus();
+
+      // Basic Insert
+      // We wrap it in a div to ensure block behavior if dropped between paragraphs,
+      // but execCommand insertImage is safer for cursor position preservation.
+      // However, insertImage doesn't support styling easily. 
+      // We'll insert an img tag directly using range.
+      
+      const img = document.createElement('img');
+      img.src = base64Data;
+      img.style.maxWidth = '100%';
+      img.style.height = 'auto';
+      img.style.display = 'block';
+      img.style.margin = '10px auto';
+      img.className = 'editor-image'; // Marker class
+
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0 && editorRef.current.contains(selection.anchorNode)) {
+          const range = selection.getRangeAt(0);
+          range.deleteContents();
+          range.insertNode(img);
+          range.collapse(false); // Move cursor after image
+      } else {
+          // If no selection or selection outside, append to end
+          editorRef.current.appendChild(img);
+      }
+      
+      // Select the new image immediately
+      setSelectedImage(img);
+      handleSave(); // Auto-save state
+  };
+
+  const handleFiles = (files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      const file = files[0];
+      if (file.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+              if (e.target?.result) {
+                  insertImageAtCursor(e.target.result as string);
+              }
+          };
+          reader.readAsDataURL(file);
+      }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      if (file.type.startsWith('image/')) {
-        insertImage(file);
+    handleFiles(e.dataTransfer.files);
+  };
+
+  // --- Interaction Handlers ---
+
+  const handleEditorClick = (e: React.MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'IMG') {
+          setSelectedImage(target as HTMLImageElement);
+          e.stopPropagation(); // Prevent text cursor placement on image click
+      } else {
+          setSelectedImage(null);
       }
-    }
   };
 
   const handleExportPDF = async () => {
-    if (isExporting) return;
+    if (isExporting || !editorRef.current) return;
     setIsExporting(true);
     
-    // Target the specific Prosemirror content div
-    const element = document.querySelector('.ProseMirror');
-    if (!element) {
-        setIsExporting(false);
-        return;
-    }
-
     try {
-        const canvas = await html2canvas(element as HTMLElement, {
+        // Temporarily hide the selection overlay if active
+        const wasSelected = selectedImage;
+        setSelectedImage(null);
+        
+        // Wait for render cycle
+        await new Promise(r => setTimeout(r, 50));
+
+        const canvas = await html2canvas(editorRef.current, {
             scale: 2,
             useCORS: true,
             logging: false,
@@ -166,6 +189,9 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
         }
 
         pdf.save(`${paperData.subject || 'paper'}.pdf`);
+        
+        // Restore selection
+        if (wasSelected) setSelectedImage(wasSelected);
 
     } catch (error) {
         console.error("Export failed", error);
@@ -174,10 +200,6 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
         setIsExporting(false);
     }
   };
-
-  if (!editor) {
-    return <div className="flex items-center justify-center h-screen"><SpinnerIcon className="w-8 h-8 text-indigo-600" /></div>;
-  }
 
   return (
     <div 
@@ -214,27 +236,40 @@ const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, o
         <input 
             type="file" 
             ref={fileInputRef} 
-            onChange={handleImageUpload} 
+            onChange={(e) => { handleFiles(e.target.files); if (e.target) e.target.value = ''; }} 
             className="hidden" 
             accept="image/*" 
         />
         <div className="w-px h-6 bg-slate-300 dark:bg-slate-600 mx-2" />
         <p className="text-xs text-slate-500 dark:text-slate-400">
-            Click anywhere to edit text • Drag image handles to resize • Drag & Drop to upload
+            Click image to edit • Drag corners to resize • Drag & Drop files
         </p>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-8 flex justify-center bg-slate-200 dark:bg-slate-950">
-        <div 
-            className="bg-white text-black shadow-2xl transition-all prose-lg print:shadow-none"
-            style={{
-                width: `${A4_WIDTH_PX}px`,
-                minHeight: `${A4_HEIGHT_PX}px`,
-                maxWidth: '100%',
-                padding: '0', 
-            }}
-        >
-            <EditorContent editor={editor} />
+      <div className="flex-1 overflow-y-auto p-8 flex justify-center bg-slate-200 dark:bg-slate-950 relative" id="editor-scroller">
+        <div className="relative">
+            <div 
+                ref={editorRef}
+                contentEditable={true}
+                suppressContentEditableWarning={true}
+                onClick={handleEditorClick}
+                onInput={() => {/* Optional: Autosave logic could go here */}}
+                className="bg-white text-black shadow-2xl transition-all prose-lg print:shadow-none outline-none"
+                style={{
+                    width: `${A4_WIDTH_PX}px`,
+                    minHeight: `${A4_HEIGHT_PX}px`,
+                    maxWidth: '100%',
+                    padding: '0', 
+                }}
+            />
+            {/* The Overlay component handles the UI for the selected image */}
+            {selectedImage && (
+                <ImageControlOverlay 
+                    imageElement={selectedImage} 
+                    onDeselect={() => setSelectedImage(null)} 
+                    containerRef={editorRef}
+                />
+            )}
         </div>
       </div>
     </div>
