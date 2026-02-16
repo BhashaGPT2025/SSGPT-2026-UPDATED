@@ -14,6 +14,8 @@ import { SpinnerIcon } from './icons/SpinnerIcon';
 import { ProImageEditor } from './ProImageEditor';
 
 const A4_WIDTH_PX = 794; 
+// Standard A4 height at 96 DPI is approx 1123px. 
+// We use this for visual page breaks.
 const A4_HEIGHT_PX = 1123;
 
 const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: QuestionPaperData) => void; onSaveAndExit: () => void; onReady: () => void; }>((props, ref) => {
@@ -36,6 +38,9 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
     const [imageToCrop, setImageToCrop] = useState<UploadedImage | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    
+    // Track last selection to insert images correctly even if focus is lost
+    const lastSelectionRange = useRef<Range | null>(null);
 
     // -- REFS --
     const editorContentRef = useRef<HTMLDivElement>(null);
@@ -60,8 +65,20 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         }
     }, [styles]);
 
+    // Keep track of cursor position
+    const saveSelection = () => {
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            if (editorContentRef.current?.contains(range.commonAncestorContainer)) {
+                lastSelectionRange.current = range.cloneRange();
+            }
+        }
+    };
+
     // Handle Image Selection inside Editor
     const handleEditorClick = (e: React.MouseEvent) => {
+        saveSelection();
         const target = e.target as HTMLElement;
         if (target.tagName === 'IMG' && editorContentRef.current?.contains(target)) {
             setSelectedImage(target as HTMLImageElement);
@@ -71,31 +88,50 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         }
     };
 
+    const handleEditorKeyUp = () => {
+        saveSelection();
+    };
+
     // Insert Image Logic
     const insertImageAtCursor = (url: string) => {
         if (!editorContentRef.current) return;
         
-        // Ensure editor has focus to insert at cursor, else append
-        editorContentRef.current.focus();
+        // Restore selection if lost, or default to end of doc
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        if (lastSelectionRange.current) {
+            selection?.addRange(lastSelectionRange.current);
+        } else {
+            // Focus and move to end
+            editorContentRef.current.focus();
+            const range = document.createRange();
+            range.selectNodeContents(editorContentRef.current);
+            range.collapse(false);
+            selection?.addRange(range);
+        }
         
         const img = document.createElement('img');
         img.src = url;
-        img.style.maxWidth = '100%';
+        img.style.maxWidth = '80%'; // Default size
         img.style.height = 'auto';
         img.style.display = 'block';
         img.style.margin = '10px auto';
+        img.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
         
-        const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0 && editorContentRef.current.contains(selection.anchorNode)) {
-            const range = selection.getRangeAt(0);
+        // Insert
+        const range = selection?.getRangeAt(0);
+        if (range) {
             range.deleteContents();
             range.insertNode(img);
-            range.collapse(false);
-        } else {
-            editorContentRef.current.appendChild(img);
+            // Move cursor after image
+            range.setStartAfter(img);
+            range.setEndAfter(img);
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+            lastSelectionRange.current = range;
         }
         
-        // Auto-select the new image
+        // Auto-select the new image for resizing
         setTimeout(() => setSelectedImage(img), 100);
     };
 
@@ -115,13 +151,36 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         e.preventDefault();
         e.stopPropagation();
         
-        // Handle files dragged from desktop
+        // 1. Calculate drop position
+        let range: Range | undefined;
+        // Standard way to get range from point
+        if (document.caretRangeFromPoint) {
+            range = document.caretRangeFromPoint(e.clientX, e.clientY) || undefined;
+        } else if ((document as any).caretPositionFromPoint) {
+            // Firefox fallback
+            const pos = (document as any).caretPositionFromPoint(e.clientX, e.clientY);
+            if (pos) {
+                range = document.createRange();
+                range.setStart(pos.offsetNode, pos.offset);
+                range.collapse(true);
+            }
+        }
+
+        // Set the selection to the drop point
+        if (range && editorContentRef.current?.contains(range.commonAncestorContainer)) {
+            const sel = window.getSelection();
+            sel?.removeAllRanges();
+            sel?.addRange(range);
+            lastSelectionRange.current = range;
+        }
+
+        // 2. Handle files dragged from desktop
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             handleFiles(e.dataTransfer.files);
             return;
         }
 
-        // Handle images dragged from Gallery (which sets image/src)
+        // 3. Handle images dragged from Gallery
         const imgSrc = e.dataTransfer.getData('image/src');
         if (imgSrc) {
             insertImageAtCursor(imgSrc);
@@ -141,12 +200,14 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         });
     };
 
-    const handleCropComplete = () => {
-        // In a real scenario, ProImageEditor would return new URL. 
-        // For now, we assume it updates state or we re-fetch.
-        // Since ProImageEditor component logic in this codebase doesn't output a URL callback easily in existing code,
-        // We'll just close it. Ideally, ProImageEditor needs an onSave prop.
-        // For this fix, we'll just close it.
+    const handleCropSave = (newUrl: string) => {
+        if (selectedImage) {
+            selectedImage.src = newUrl;
+            // Force refresh overlay dimensions
+            const temp = selectedImage;
+            setSelectedImage(null);
+            setTimeout(() => setSelectedImage(temp), 50);
+        }
         setImageToCrop(null);
     };
 
@@ -201,7 +262,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     }));
 
     return (
-        <div className="flex h-full bg-slate-100 dark:bg-gray-900 overflow-hidden relative">
+        <div className="flex h-full bg-slate-200 dark:bg-gray-900 overflow-hidden relative">
             {isExporting && (
                 <div className="fixed inset-0 bg-black/80 z-[100] flex flex-col items-center justify-center text-white">
                     <SpinnerIcon className="w-12 h-12 mb-4" />
@@ -212,7 +273,8 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             {imageToCrop && (
                 <ProImageEditor 
                     image={imageToCrop} 
-                    onClose={handleCropComplete} 
+                    onClose={() => setImageToCrop(null)} 
+                    onSave={handleCropSave}
                 />
             )}
 
@@ -253,19 +315,25 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                      onDragOver={e => e.preventDefault()}
                      onClick={() => setSelectedImage(null)}
                 >
-                    <div className="relative">
+                    <div className="relative pb-20">
+                        {/* Page Container */}
                         <div 
                             ref={editorContentRef}
                             contentEditable
                             suppressContentEditableWarning
                             onClick={handleEditorClick}
-                            className="bg-white text-black shadow-2xl transition-all prose-lg print:shadow-none outline-none"
+                            onKeyUp={handleEditorKeyUp}
+                            className="bg-white text-black shadow-2xl transition-all prose-lg print:shadow-none outline-none relative"
                             style={{
                                 width: `${A4_WIDTH_PX}px`,
                                 minHeight: `${A4_HEIGHT_PX}px`,
                                 maxWidth: '100%',
                                 padding: '60px',
-                                boxSizing: 'border-box'
+                                boxSizing: 'border-box',
+                                // Visual Page Break Simulation using gradient
+                                backgroundImage: `linear-gradient(to bottom, transparent calc(${A4_HEIGHT_PX}px - 20px), #e2e8f0 calc(${A4_HEIGHT_PX}px - 20px), #e2e8f0 ${A4_HEIGHT_PX}px, transparent ${A4_HEIGHT_PX}px)`,
+                                backgroundSize: `100% ${A4_HEIGHT_PX}px`,
+                                backgroundRepeat: 'repeat-y'
                             }}
                         />
                         
@@ -281,14 +349,17 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
                         {/* Watermark Rendering Overlay */}
                         {watermark.type !== 'none' && (
-                            <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden z-0" style={{ opacity: watermark.opacity }}>
+                            <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden z-0" style={{ opacity: watermark.opacity, height: '100%' }}>
                                 {watermark.type === 'text' && (
                                     <div style={{ 
                                         transform: `rotate(${watermark.rotation}deg)`, 
                                         fontSize: `${watermark.fontSize}px`, 
                                         color: watermark.color,
                                         fontWeight: 'bold',
-                                        whiteSpace: 'nowrap'
+                                        whiteSpace: 'nowrap',
+                                        position: 'fixed', // Fixed to view so it repeats mentally, or actually repeat it if we could
+                                        top: '50%',
+                                        left: '50%'
                                     }}>
                                         {watermark.text}
                                     </div>
