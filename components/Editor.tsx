@@ -30,16 +30,12 @@ const triggerMathRendering = (element: HTMLElement | null): Promise<void> => {
                     {left: '\\[', right: '\\]', display: true}
                 ], 
                 throwOnError: false,
-                // Add a callback to resolve the promise when rendering is complete.
-                // This is a conceptual addition; auto-render doesn't have a direct callback.
-                // We'll use a timeout as a practical fallback.
             });
         } catch (err) {
             console.error("KaTeX render error:", err);
         }
-        // Since KaTeX auto-render is synchronous but DOM updates may not be,
-        // a short timeout helps ensure layout is calculated.
-        setTimeout(resolve, 50);
+        // Increased timeout to allow for layout stabilization after math rendering
+        setTimeout(resolve, 100);
     });
 };
 
@@ -82,10 +78,12 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         container.style.position = 'absolute';
         container.style.left = '-9999px';
         container.style.top = '0';
-        container.style.visibility = 'hidden'; // Keep it in the layout tree for measurement
+        container.style.visibility = 'hidden'; 
         container.style.padding = '60px'; 
         container.style.boxSizing = 'border-box';
         container.style.background = 'white';
+        // IMPORTANT: Apply the same classes as the render view (prose) to ensure measurements match margins/line-heights.
+        container.className = 'prose max-w-none';
 
         const htmlContent = generateHtmlFromPaperData(state.paper, { 
             logoConfig: state.logo.src ? { src: state.logo.src, alignment: 'center' } : undefined,
@@ -95,7 +93,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         container.innerHTML = `<div id="paper-root">${htmlContent}</div>`;
         document.body.appendChild(container);
 
-        // CRITICAL FIX: Render math in the hidden container BEFORE measuring.
+        // Render math in the hidden container BEFORE measuring to get accurate heights
         await triggerMathRendering(container);
         
         const contentRoot = container.querySelector('#paper-root');
@@ -104,16 +102,21 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         const pages: string[] = [];
         let currentPageHtml = ""; 
         let currentHeight = 0;
-        const maxPageHeight = A4_HEIGHT_PX - 120; // 60px padding top/bottom
+        
+        // Reduce max height slightly (safety buffer) to prevent edge-case overflows
+        const SAFETY_BUFFER = 40; 
+        const maxPageHeight = A4_HEIGHT_PX - 120 - SAFETY_BUFFER; // 120 is padding (60+60)
 
         children.forEach(child => {
             const el = child as HTMLElement;
+            
+            // Get accurate height including margins
             const style = window.getComputedStyle(el);
             const marginTop = parseFloat(style.marginTop || '0');
             const marginBottom = parseFloat(style.marginBottom || '0');
-            // Use offsetHeight for a more reliable measurement after rendering.
             const elHeight = el.offsetHeight + marginTop + marginBottom;
             
+            // If this single element fits, check if it fits on current page
             if (currentHeight > 0 && currentHeight + elHeight > maxPageHeight) { 
                 pages.push(currentPageHtml); 
                 currentPageHtml = ""; 
@@ -161,7 +164,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 const el = pageElements[i] as HTMLElement;
                 
                 const canvas = await html2canvas(el, { 
-                    scale: 2, // Use a reasonable scale for quality vs performance
+                    scale: 2, 
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
