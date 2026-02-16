@@ -44,6 +44,8 @@ export const StickyToolbar: React.FC<StickyToolbarProps> = ({
             <div className="flex items-center bg-slate-50 dark:bg-slate-800/50 p-1 rounded-lg border border-slate-200 dark:border-slate-700/50">
                 <select 
                     onChange={(e) => onStyleChange('fontName', e.target.value)}
+                    // Prevent focus loss on interaction
+                    onMouseDown={(e) => e.stopPropagation()} 
                     className="h-8 text-sm bg-transparent border-none focus:ring-0 text-slate-700 dark:text-slate-200 w-32 cursor-pointer outline-none"
                     defaultValue="Times New Roman"
                 >
@@ -68,6 +70,8 @@ export const StickyToolbar: React.FC<StickyToolbarProps> = ({
                         <input 
                             type="color" 
                             onChange={(e) => onStyleChange('foreColor', e.target.value)}
+                            // Prevent focus loss
+                            onMouseDown={(e) => e.preventDefault()}
                             className="w-[150%] h-[150%] -m-[25%] cursor-pointer p-0 border-0"
                         />
                     </div>
@@ -106,8 +110,7 @@ export const StickyToolbar: React.FC<StickyToolbarProps> = ({
             {/* Page Controls */}
             <div className="flex items-center ml-auto">
                 <button 
-                    onClick={onAddPage}
-                    // No preventDefault here as we don't need to preserve text selection for page adding
+                    onMouseDown={(e) => { e.preventDefault(); onAddPage(); }}
                     className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 text-white text-sm font-bold rounded-lg shadow-md hover:bg-indigo-700 transition-colors"
                 >
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14"/></svg>

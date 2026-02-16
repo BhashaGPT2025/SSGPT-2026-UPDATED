@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { type QuestionPaperData, type PaperStyles, type ImageState, WatermarkState } from '../types';
@@ -11,13 +11,157 @@ import { SpinnerIcon } from './icons/SpinnerIcon';
 // A4 Dimensions in Pixels at ~96 DPI
 const A4_WIDTH_PX = 794; 
 const A4_HEIGHT_PX = 1123;
+const PAGE_PADDING_Y = 120; // 60px top + 60px bottom
 
 interface PageData {
     id: string;
     htmlContent: string;
     images: ImageState[];
-    isOverflowing?: boolean;
 }
+
+// --- PaperPage Sub-Component (Memoized) ---
+const PaperPage = React.memo(({ 
+    pageData, 
+    isActive, 
+    styles,
+    selectedImageId, 
+    onPageClick, 
+    onUpdateContent, 
+    onOverflow, 
+    onImageSelect, 
+    onImageUpdate 
+}: {
+    pageData: PageData;
+    isActive: boolean;
+    styles: PaperStyles;
+    selectedImageId: string | null;
+    onPageClick: (id: string) => void;
+    onUpdateContent: (id: string, html: string) => void;
+    onOverflow: (id: string, content: string) => void;
+    onImageSelect: (id: string | null) => void;
+    onImageUpdate: (pageId: string, img: ImageState) => void;
+}) => {
+    const editorRef = useRef<HTMLDivElement>(null);
+
+    // Sync content to parent state ONLY on blur to prevent cursor jumps
+    const handleBlur = () => {
+        if (editorRef.current) {
+            onUpdateContent(pageData.id, editorRef.current.innerHTML);
+        }
+    };
+
+    // Auto-Pagination Logic
+    const handleInput = useCallback(() => {
+        const el = editorRef.current;
+        if (!el) return;
+
+        if (el.scrollHeight > el.clientHeight) {
+            // Find the last significant node to move
+            let lastNode = el.lastElementChild;
+            
+            // Skip empty text nodes or BRs at the very end
+            while (lastNode && (lastNode.nodeName === 'BR' || (lastNode.nodeType === Node.TEXT_NODE && !lastNode.textContent?.trim()))) {
+                lastNode.remove();
+                lastNode = el.lastElementChild;
+            }
+
+            if (lastNode) {
+                const contentToMove = lastNode.outerHTML;
+                lastNode.remove(); // Remove from DOM immediately
+                onOverflow(pageData.id, contentToMove); // Trigger parent to add to next page
+            }
+        }
+    }, [onOverflow, pageData.id]);
+
+    // Handle initial HTML load
+    useEffect(() => {
+        if (editorRef.current && pageData.htmlContent && editorRef.current.innerHTML !== pageData.htmlContent) {
+            // Only update innerHTML if it's significantly different (e.g. initial load or external update)
+            // But if we are active, we generally trust our local DOM state unless strictly forced.
+            // For this implementation, we allow initial load.
+            if (!isActive) {
+                 editorRef.current.innerHTML = pageData.htmlContent;
+            } else if (editorRef.current.innerHTML === '') {
+                 editorRef.current.innerHTML = pageData.htmlContent;
+            }
+        }
+    }, [pageData.htmlContent, isActive]);
+
+    // Ensure focus if active
+    useEffect(() => {
+        if (isActive && editorRef.current && document.activeElement !== editorRef.current) {
+            // Check if we clicked on an image, if so, don't steal focus
+            if (!selectedImageId) {
+                editorRef.current.focus();
+            }
+        }
+    }, [isActive, selectedImageId]);
+
+    return (
+        <div 
+            className={`paper-page relative bg-white shadow-2xl transition-all duration-300 print:shadow-none print:m-0 group ${isActive ? 'ring-4 ring-indigo-500/20' : ''}`}
+            style={{
+                width: `${A4_WIDTH_PX}px`,
+                height: `${A4_HEIGHT_PX}px`,
+                minWidth: `${A4_WIDTH_PX}px`,
+                minHeight: `${A4_HEIGHT_PX}px`,
+                overflow: 'hidden',
+                position: 'relative'
+            }}
+            onMouseDown={() => onPageClick(pageData.id)}
+        >
+            {/* Text Layer */}
+            <div 
+                ref={editorRef}
+                contentEditable
+                suppressContentEditableWarning
+                className="w-full h-full p-[60px] outline-none prose max-w-none box-border"
+                style={{ 
+                    fontFamily: styles.fontFamily,
+                    color: styles.headingColor,
+                }}
+                onBlur={handleBlur}
+                onInput={handleInput}
+            />
+
+            {/* Image Layer */}
+            <div className="absolute inset-0 pointer-events-none z-10">
+                {pageData.images.map(img => (
+                    <EditableImage 
+                        key={img.id}
+                        imageState={img}
+                        isSelected={selectedImageId === img.id}
+                        onSelect={() => {
+                            onPageClick(pageData.id);
+                            onImageSelect(img.id);
+                        }}
+                        onUpdate={(newState) => onImageUpdate(pageData.id, newState)}
+                    />
+                ))}
+            </div>
+
+            {/* Page Footer */}
+            <div className="absolute bottom-2 right-4 text-xs text-gray-300 pointer-events-none print:hidden font-mono">
+                {pageData.id}
+            </div>
+        </div>
+    );
+}, (prev, next) => {
+    // Optimization: Don't re-render active page on text updates from parent (since we have local state)
+    // Re-render if: images changed, active state changed, styles changed, or selected image changed.
+    const isImagesChanged = prev.pageData.images !== next.pageData.images;
+    const isActiveChanged = prev.isActive !== next.isActive;
+    const isSelectionChanged = prev.selectedImageId !== next.selectedImageId;
+    const isStylesChanged = prev.styles !== next.styles;
+    
+    // If active, ignore htmlContent prop changes to prevent cursor reset
+    if (next.isActive && !isActiveChanged && !isImagesChanged && !isSelectionChanged && !isStylesChanged) {
+        return true; 
+    }
+    
+    return !isImagesChanged && !isActiveChanged && !isSelectionChanged && !isStylesChanged && prev.pageData.htmlContent === next.pageData.htmlContent;
+});
+
 
 const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: QuestionPaperData) => void; onSaveAndExit: () => void; onReady: () => void; }>((props, ref) => {
     const { paperData, onSave, onSaveAndExit, onReady } = props;
@@ -30,7 +174,6 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     const [isExporting, setIsExporting] = useState(false);
     
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const editorRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
     // --- INITIALIZATION ---
     useEffect(() => {
@@ -48,106 +191,97 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         onReady();
     }, []);
 
-    // --- PAGE ACTIVATION ---
-    const handlePageClick = (pageId: string) => {
-        setActivePageId(pageId);
-    };
+    // --- HANDLERS ---
 
-    // --- TEXT ENGINE (NO-JUMP) ---
-    const handleTextChange = (pageId: string, content: string) => {
-        setPages(prev => prev.map(p => {
-            if (p.id === pageId) {
-                // Check overflow
-                const el = editorRefs.current[pageId];
-                const isOverflowing = el ? el.scrollHeight > el.clientHeight : false;
-                return { ...p, htmlContent: content, isOverflowing };
-            }
-            return p;
-        }));
-    };
+    const handlePageClick = useCallback((id: string) => {
+        setActivePageId(id);
+        // Deselect image if clicking on page body
+        // setSelectedImageId(null); // Moved to container click
+    }, []);
 
-    const execCommand = (command: string, value?: string) => {
-        // Ensure the active page text area has focus if it's not currently focused
-        if (activePageId && editorRefs.current[activePageId]) {
-            const activeEl = editorRefs.current[activePageId];
-            if (document.activeElement !== activeEl) {
-                activeEl?.focus();
+    const handleUpdateContent = useCallback((pageId: string, html: string) => {
+        setPages(prev => prev.map(p => p.id === pageId ? { ...p, htmlContent: html } : p));
+    }, []);
+
+    const handleOverflow = useCallback((pageId: string, contentToMove: string) => {
+        setPages(prev => {
+            const index = prev.findIndex(p => p.id === pageId);
+            if (index === -1) return prev;
+
+            const newPages = [...prev];
+            const nextPage = newPages[index + 1];
+
+            if (nextPage) {
+                newPages[index + 1] = {
+                    ...nextPage,
+                    htmlContent: contentToMove + nextPage.htmlContent
+                };
+                // We'll switch focus to next page in useEffect or timeout
+            } else {
+                const newId = `page-${Date.now()}`;
+                newPages.push({
+                    id: newId,
+                    htmlContent: contentToMove,
+                    images: []
+                });
             }
-        }
-        document.execCommand(command, false, value);
+            return newPages;
+        });
         
-        // Sync state after command
-        if (activePageId && editorRefs.current[activePageId]) {
-            handleTextChange(activePageId, editorRefs.current[activePageId]!.innerHTML);
-        }
-    };
-
-    // --- PAGE MANAGEMENT ---
-    const addPage = () => {
-        const newPageId = `page-${Date.now()}`;
-        setPages(prev => [...prev, {
-            id: newPageId,
-            htmlContent: '<div class="p-8"></div>',
-            images: []
-        }]);
-        // Automatically focus new page
+        // Auto-switch focus to next page shortly after overflow
         setTimeout(() => {
-            setActivePageId(newPageId);
-            const el = editorRefs.current[newPageId];
-            el?.focus();
-        }, 100);
-    };
+            setPages(currentPages => {
+                const idx = currentPages.findIndex(p => p.id === pageId);
+                if (idx !== -1 && idx + 1 < currentPages.length) {
+                    setActivePageId(currentPages[idx + 1].id);
+                }
+                return currentPages;
+            });
+        }, 50);
+    }, []);
 
-    const deletePage = (pageId: string) => {
-        if (pages.length <= 1) {
-            alert("You cannot delete the last page.");
-            return;
-        }
-        if (confirm("Are you sure you want to delete this page?")) {
-            setPages(prev => prev.filter(p => p.id !== pageId));
-            if (activePageId === pageId) {
-                setActivePageId(pages[0].id);
-            }
-        }
-    };
-
-    // --- IMAGE ENGINE (Per Page) ---
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        
-        // Default to the first page if no active page is selected (though one should be)
-        const targetPageId = activePageId || pages[0].id;
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const src = event.target?.result as string;
-            const newImage: ImageState = {
-                id: `img-${Date.now()}`,
-                src,
-                x: 100, // Default position
-                y: 100,
-                width: 200,
-                height: 200,
-                rotation: 0, 
-                pageIndex: 0 // Legacy field, not strictly needed with new structure
-            };
-
-            setPages(prev => prev.map(p => p.id === targetPageId ? {
-                ...p,
-                images: [...p.images, newImage]
-            } : p));
-            setSelectedImageId(newImage.id);
-        };
-        reader.readAsDataURL(file);
-        if (e.target) e.target.value = '';
-    };
-
-    const updateImage = (pageId: string, updatedImg: ImageState) => {
+    const handleImageUpdate = useCallback((pageId: string, updatedImg: ImageState) => {
         setPages(prev => prev.map(p => p.id === pageId ? {
             ...p,
             images: p.images.map(img => img.id === updatedImg.id ? updatedImg : img)
         } : p));
+    }, []);
+
+    const handleImageSelect = useCallback((imgId: string | null) => {
+        setSelectedImageId(imgId);
+    }, []);
+
+    const addPage = useCallback(() => {
+        const newId = `page-${Date.now()}`;
+        setPages(prev => [...prev, {
+            id: newId,
+            htmlContent: '',
+            images: []
+        }]);
+        setActivePageId(newId);
+    }, []);
+
+    const execCommand = useCallback((command: string, value?: string) => {
+        document.execCommand(command, false, value);
+    }, []);
+
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !activePageId) return;
+        
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const src = ev.target?.result as string;
+            const newImage: ImageState = {
+                id: `img-${Date.now()}`,
+                src,
+                x: 100, y: 100, width: 200, height: 200, rotation: 0, pageIndex: 0
+            };
+            setPages(prev => prev.map(p => p.id === activePageId ? { ...p, images: [...p.images, newImage] } : p));
+            setSelectedImageId(newImage.id);
+        };
+        reader.readAsDataURL(file);
+        if (e.target) e.target.value = '';
     };
 
     const deleteSelectedObject = () => {
@@ -159,32 +293,29 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         setSelectedImageId(null);
     };
 
-    // --- EXPORT ENGINE ---
+    // --- EXPORT ---
     const handleExport = async () => {
         setIsExporting(true);
-        setSelectedImageId(null); // Deselect everything
-        await new Promise(r => setTimeout(r, 200)); // Wait for render
+        setSelectedImageId(null);
+        await new Promise(r => setTimeout(r, 200));
 
         try {
             const pdf = new jsPDF('p', 'mm', 'a4');
-            const pageElements = document.querySelectorAll('.paper-page'); // Select by class
+            const pageElements = document.querySelectorAll('.paper-page');
             
             for (let i = 0; i < pageElements.length; i++) {
                 if (i > 0) pdf.addPage();
-                
                 const canvas = await html2canvas(pageElements[i] as HTMLElement, {
-                    scale: 2, // 2x scale is usually sufficient for print and faster than 3
+                    scale: 2,
                     useCORS: true,
                     logging: false,
                     backgroundColor: '#ffffff'
                 });
-                
                 const imgData = canvas.toDataURL('image/jpeg', 0.85); 
                 const pdfWidth = pdf.internal.pageSize.getWidth();
                 const pdfHeight = pdf.internal.pageSize.getHeight();
                 pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
             }
-            
             pdf.save(`${paperData.subject}_Paper.pdf`);
         } catch (e) {
             console.error(e);
@@ -196,6 +327,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
     useImperativeHandle(ref, () => ({
         handleSaveAndExitClick: () => {
+            // Simple serialization: Concatenate all pages with a separator
             const fullHtml = pages.map(p => `<div class="page-break-wrapper">${p.htmlContent}</div>`).join('<hr class="page-break"/>');
             onSave({ ...paperData, htmlContent: fullHtml });
             onSaveAndExit();
@@ -215,7 +347,6 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 </div>
             )}
 
-            {/* --- TOP STICKY TOOLBAR --- */}
             <StickyToolbar 
                 onStyleChange={execCommand}
                 onInsertImage={() => fileInputRef.current?.click()}
@@ -225,96 +356,25 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 styles={styles}
             />
 
-            {/* --- WORKSPACE --- */}
             <div 
                 className="flex-1 overflow-y-auto p-8 flex flex-col items-center gap-8 scroll-smooth pb-40" 
-                onClick={() => setSelectedImageId(null)} 
+                onClick={() => setSelectedImageId(null)}
             >
-                {pages.map((page, index) => (
-                    <div key={page.id} className="relative group">
-                        {/* Page Container */}
-                        <div 
-                            className={`paper-page relative bg-white shadow-2xl transition-all duration-300 print:shadow-none print:m-0 ${activePageId === page.id ? 'ring-4 ring-indigo-500/20' : ''}`}
-                            style={{
-                                width: `${A4_WIDTH_PX}px`,
-                                height: `${A4_HEIGHT_PX}px`,
-                                minWidth: `${A4_WIDTH_PX}px`,
-                                minHeight: `${A4_HEIGHT_PX}px`,
-                                overflow: 'hidden', // Enforce A4 clipping
-                                position: 'relative' // Essential for absolute children
-                            }}
-                            onMouseDown={() => handlePageClick(page.id)}
-                        >
-                            {/* --- LAYER 1: TEXT (Bottom) --- */}
-                            <div 
-                                ref={el => {
-                                    editorRefs.current[page.id] = el;
-                                }}
-                                contentEditable
-                                suppressContentEditableWarning
-                                className="w-full h-full p-[60px] outline-none prose max-w-none"
-                                style={{ 
-                                    fontFamily: styles.fontFamily,
-                                    color: styles.headingColor,
-                                    boxSizing: 'border-box'
-                                }}
-                                dangerouslySetInnerHTML={{ __html: page.htmlContent }}
-                                onBlur={(e) => handleTextChange(page.id, e.currentTarget.innerHTML)}
-                                onInput={(e) => {
-                                    // Real-time overflow check
-                                    const el = e.currentTarget;
-                                    if (el.scrollHeight > el.clientHeight && !page.isOverflowing) {
-                                        setPages(prev => prev.map(p => p.id === page.id ? { ...p, isOverflowing: true } : p));
-                                    } else if (el.scrollHeight <= el.clientHeight && page.isOverflowing) {
-                                        setPages(prev => prev.map(p => p.id === page.id ? { ...p, isOverflowing: false } : p));
-                                    }
-                                }}
-                                onClick={(e) => { e.stopPropagation(); handlePageClick(page.id); }} 
-                            />
-
-                            {/* --- LAYER 2: IMAGES (Overlay) --- */}
-                            <div className="absolute inset-0 pointer-events-none z-10">
-                                {page.images.map(img => (
-                                    <EditableImage 
-                                        key={img.id}
-                                        imageState={img}
-                                        isSelected={selectedImageId === img.id}
-                                        onSelect={() => {
-                                            setActivePageId(page.id); // Ensure page becomes active when image is selected
-                                            setSelectedImageId(img.id);
-                                        }}
-                                        onUpdate={(newState) => updateImage(page.id, newState)}
-                                    />
-                                ))}
-                            </div>
-
-                            {/* Page Number Indicator */}
-                            <div className="absolute bottom-2 right-4 text-xs text-gray-300 pointer-events-none print:hidden font-mono">
-                                Page {index + 1}
-                            </div>
-                        </div>
-
-                        {/* Page Tools (Delete, etc.) */}
-                        <div className="absolute top-0 -right-12 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button 
-                                onClick={() => deletePage(page.id)}
-                                className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-500 hover:text-white shadow-sm transition-colors"
-                                title="Delete Page"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-                            </button>
-                        </div>
-
-                        {/* Overflow Warning */}
-                        {page.isOverflowing && (
-                            <div className="absolute bottom-0 left-0 w-full bg-red-500/90 text-white text-xs py-1 text-center font-bold animate-pulse shadow-lg pointer-events-none z-20">
-                                ⚠️ Text Overflowing - Content cut off in export
-                            </div>
-                        )}
-                    </div>
+                {pages.map((page) => (
+                    <PaperPage 
+                        key={page.id}
+                        pageData={page}
+                        isActive={activePageId === page.id}
+                        styles={styles}
+                        selectedImageId={selectedImageId}
+                        onPageClick={handlePageClick}
+                        onUpdateContent={handleUpdateContent}
+                        onOverflow={handleOverflow}
+                        onImageSelect={handleImageSelect}
+                        onImageUpdate={handleImageUpdate}
+                    />
                 ))}
                 
-                {/* Add Page Button at Bottom */}
                 <button 
                     onClick={addPage}
                     className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-800 text-indigo-600 font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all"
