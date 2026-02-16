@@ -18,6 +18,7 @@ const ResizableImageComponent = ({ node, updateAttributes, selected }: any) => {
 
   const handleResize = (direction: string, e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     const startX = e.clientX;
     const startWidth = parseInt(width.toString().replace('px', ''), 10) || 300; // Default fallback
 
@@ -57,6 +58,8 @@ const ResizableImageComponent = ({ node, updateAttributes, selected }: any) => {
             display: 'block',
           }}
           className="rounded-sm"
+          draggable="true"
+          data-drag-handle
         />
         
         {/* Resize Handles (Only show when selected) */}
@@ -74,7 +77,7 @@ const ResizableImageComponent = ({ node, updateAttributes, selected }: any) => {
             />
             
             {/* Toolbar */}
-            <div className="absolute top-0 right-0 -translate-y-full px-2 py-1 bg-slate-800 text-white text-xs rounded-t-md flex gap-2 shadow-xl">
+            <div className="absolute top-0 right-0 -translate-y-full px-2 py-1 bg-slate-800 text-white text-xs rounded-t-md flex gap-2 shadow-xl z-20">
                <button onClick={toggleBorder} className="hover:text-indigo-300">
                  {border ? 'Remove Border' : 'Add Border'}
                </button>
