@@ -1,10 +1,9 @@
-
 import React from 'react';
 import { type PaperStyles, type WatermarkState, type LogoState } from '../types';
 import { UploadIcon } from './icons/UploadIcon';
 import { ImageIcon } from './icons/ImageIcon';
 import { PenIcon } from './icons/PenIcon';
-import { ImageGallery } from './ImageGallery';
+
 
 type PaperSize = 'a4' | 'letter';
 
@@ -12,6 +11,7 @@ const ChevronRightIcon = (props: React.SVGProps<SVGSVGElement>) => <svg xmlns="h
 const AlignLeftIcon = (props: React.SVGProps<SVGSVGElement>) => <svg viewBox="0 0 24 24" fill="currentColor" {...props}><path d="M3 4h18v2H3V4zm0 15h12v2H3v-2zm0-5h18v2H3v-2zm0-5h12v2H3V9z"></path></svg>;
 const AlignCenterIcon = (props: React.SVGProps<SVGSVGElement>) => <svg viewBox="0 0 24 24" fill="currentColor" {...props}><path d="M3 4h18v2H3V4zm3 15h12v2H6v-2zm-3-5h18v2H3v-2zm3-5h12v2H6V9z"></path></svg>;
 const AlignRightIcon = (props: React.SVGProps<SVGSVGElement>) => <svg viewBox="0 0 24 24" fill="currentColor" {...props}><path d="M3 4h18v2H3V4zm6 15h12v2H9v-2zm-6-5h18v2H3v-2zm6-5h12v2H9V9z"></path></svg>;
+const BackgroundIcon = (props: React.SVGProps<SVGSVGElement>) => <svg viewBox="0 0 24 24" fill="currentColor" {...props}><path d="M20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM4 4h16v11l-3.5-4.5-2.5 3.01L11.5 9l-4.5 6H4V4z"></path></svg>;
 const NoneIcon = (props: React.SVGProps<SVGSVGElement>) => <svg viewBox="0 0 24 24" fill="currentColor" {...props}><path d="M19.78 4.22a.75.75 0 00-1.06-1.06L4.22 18.72a.75.75 0 001.06 1.06L19.78 4.22z"></path><path d="M18.72 4.22a.75.75 0 00-1.06 1.06L2.22 19.78a.75.75 0 001.06-1.06L18.72 4.22z"></path></svg>;
 
 interface EditorSidebarProps {
@@ -27,7 +27,6 @@ interface EditorSidebarProps {
     isAnswerKeyMode?: boolean;
     showQuestionsInKey?: boolean;
     onToggleShowQuestions?: () => void;
-    onInsertImage?: (url: string) => void;
 }
 
 const fonts = [ 
@@ -39,11 +38,12 @@ const fonts = [
     { value: 'Georgia, serif', label: 'Georgia (Classic Serif)' }, 
     { value: "'Courier New', Courier, monospace", label: 'Courier New (Fixed Width)' }, 
 ];
+const borderStyles = [ { value: 'solid', label: 'Solid' }, { value: 'dashed', label: 'Dashed' }, { value: 'dotted', label: 'Dotted' }, { value: 'double', label: 'Double' }, ];
 
 const logoPositions: { value: LogoState['position']; label: string; icon: React.FC<any> }[] = [
-    { value: 'header-left', label: 'Left', icon: AlignLeftIcon },
-    { value: 'header-center', label: 'Center', icon: AlignCenterIcon },
-    { value: 'header-right', label: 'Right', icon: AlignRightIcon },
+    { value: 'header-left', label: 'Header Left', icon: AlignLeftIcon },
+    { value: 'header-center', label: 'Header Center', icon: AlignCenterIcon },
+    { value: 'header-right', label: 'Header Right', icon: AlignRightIcon },
     { value: 'none', label: 'None', icon: NoneIcon },
 ];
 
@@ -83,7 +83,7 @@ const SelectControl: React.FC<{label: string, value: string, onChange: (e: React
     </div>
 );
 
-const EditorSidebar: React.FC<EditorSidebarProps> = ({ styles, onStyleChange, paperSize, onPaperSizeChange, logo, watermark, onBrandingUpdate, onOpenImageModal, onUploadImageClick, isAnswerKeyMode, showQuestionsInKey, onToggleShowQuestions, onInsertImage }) => {
+const EditorSidebar: React.FC<EditorSidebarProps> = ({ styles, onStyleChange, paperSize, onPaperSizeChange, logo, watermark, onBrandingUpdate, onOpenImageModal, onUploadImageClick, isAnswerKeyMode, showQuestionsInKey, onToggleShowQuestions }) => {
     
     const handleWatermarkUpdate = (updates: Partial<WatermarkState>) => onBrandingUpdate({ watermark: { ...watermark, ...updates } });
     const handleLogoUpdate = (updates: Partial<LogoState>) => onBrandingUpdate({ logo: { ...logo, ...updates } });
@@ -91,13 +91,17 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({ styles, onStyleChange, pa
     return (
         <div className="p-4 space-y-4 pb-20">
             {!isAnswerKeyMode && (
-                <div className="grid grid-cols-2 gap-2 bg-slate-100 dark:bg-slate-900/50 p-2 rounded-xl">
+                <div className="grid grid-cols-3 gap-2 bg-slate-100 dark:bg-slate-900/50 p-2 rounded-xl">
+                    <RibbonButton icon={<AlignLeftIcon className="w-5 h-5"/>} label="Left" disabled />
+                    <RibbonButton icon={<AlignCenterIcon className="w-5 h-5"/>} label="Center" disabled />
+                    <RibbonButton icon={<AlignRightIcon className="w-5 h-5"/>} label="Right" disabled />
                     <RibbonButton icon={<UploadIcon className="w-5 h-5"/>} label="Upload" onClick={onUploadImageClick} />
                     <RibbonButton icon={<ImageIcon className="w-5 h-5"/>} label="AI Art" onClick={onOpenImageModal} />
+                    <RibbonButton icon={<PenIcon className="w-5 h-5"/>} label="Draw" disabled />
                 </div>
             )}
 
-            <ControlGroup title="Assessment" isOpenDefault>
+            <ControlGroup title="Assessment Mode" isOpenDefault>
                 <div className="flex items-center justify-between p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
                     <label className="text-sm font-black text-indigo-700 dark:text-indigo-300 tracking-tight">Answer Key View</label>
                     <button 
@@ -107,6 +111,9 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({ styles, onStyleChange, pa
                         <span className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full shadow-sm transition-transform ${isAnswerKeyMode ? 'translate-x-5' : ''}`} />
                     </button>
                 </div>
+                {isAnswerKeyMode && (
+                    <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider px-1">Marking scheme mode active.</p>
+                )}
             </ControlGroup>
 
             <ControlGroup title="Typography" isOpenDefault>
@@ -126,7 +133,7 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({ styles, onStyleChange, pa
             </ControlGroup>
 
             <ControlGroup title="Page Layout">
-                <SelectControl label="Paper Size" value={paperSize} onChange={e => onPaperSizeChange(e.target.value as PaperSize)} options={[{value: 'a4', label: 'A4'}, {value: 'letter', label: 'Letter'}]} />
+                <SelectControl label="Paper Size" value={paperSize} onChange={e => onPaperSizeChange(e.target.value as PaperSize)} options={[{value: 'a4', label: 'A4 (210 x 297mm)'}, {value: 'letter', label: 'Letter (8.5 x 11in)'}]} />
                 <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Logo Position</label>
                     <div className="flex items-center justify-between p-1 bg-slate-100 dark:bg-slate-700 rounded-lg">

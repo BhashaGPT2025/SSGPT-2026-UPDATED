@@ -10,21 +10,18 @@ import { SliderIcon } from './icons/SliderIcon';
 interface ProImageEditorProps {
     image: UploadedImage | null;
     onClose: () => void;
-    onSave?: (newImageUrl: string) => void;
 }
 
 // Helper to load image for canvas
 const loadImage = (src: string): Promise<HTMLImageElement> => {
     return new Promise((resolve) => {
         const img = new Image();
-        img.crossOrigin = "anonymous"; // Try to handle CORS
         img.onload = () => resolve(img);
-        img.onerror = () => resolve(img); // Fallback
         img.src = src;
     });
 };
 
-export const ProImageEditor: React.FC<ProImageEditorProps> = ({ image, onClose, onSave }) => {
+export const ProImageEditor: React.FC<ProImageEditorProps> = ({ image, onClose }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     
@@ -98,6 +95,7 @@ export const ProImageEditor: React.FC<ProImageEditorProps> = ({ image, onClose, 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
             // Background (Checkerboard)
+            const patternSize = 20;
             ctx.fillStyle = '#1e293b'; // slate-800
             ctx.fillRect(0,0, canvas.width, canvas.height);
             
@@ -150,27 +148,6 @@ export const ProImageEditor: React.FC<ProImageEditorProps> = ({ image, onClose, 
         }));
     };
 
-    const handleSave = () => {
-        if (!canvasRef.current || !onSave) return;
-        
-        // Temporarily clear selection box for clean export
-        const currentSelection = editorState.selectedLayerId;
-        setEditorState(s => ({...s, selectedLayerId: null}));
-        
-        // Wait for render cycle
-        setTimeout(() => {
-            try {
-                const dataUrl = canvasRef.current!.toDataURL('image/png');
-                onSave(dataUrl);
-            } catch (e) {
-                console.error("Export failed", e);
-                alert("Could not export image. Canvas might be tainted.");
-            } finally {
-                setEditorState(s => ({...s, selectedLayerId: currentSelection}));
-            }
-        }, 100);
-    };
-
     if (!image) return null;
 
     return (
@@ -206,8 +183,8 @@ export const ProImageEditor: React.FC<ProImageEditorProps> = ({ image, onClose, 
                     <span className="text-slate-500 text-sm">{Math.round(editorState.zoom * 100)}%</span>
                     <AnimatedButton 
                         icon={<SaveIcon className="w-5 h-5" />} 
-                        label="Save Changes" 
-                        onClick={handleSave}
+                        label="Export" 
+                        onClick={() => alert("Export logic would go here (canvas.toDataURL)")}
                         variant="success"
                     />
                 </div>
