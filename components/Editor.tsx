@@ -85,7 +85,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         container.style.backgroundColor = 'white';
         container.style.fontFamily = state.styles.fontFamily;
         
-        container.className = 'prose max-w-none print-container';
+        container.className = 'prose max-w-none export-container';
 
         const htmlContent = generateHtmlFromPaperData(state.paper, { 
             logoConfig: state.logo.src ? { src: state.logo.src, alignment: 'center' } : undefined,
@@ -131,7 +131,6 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         
         document.body.removeChild(container);
 
-        // Ensure we never return an empty array if content exists
         if (pages.length === 0 && htmlContent) {
             setPagesHtml([htmlContent]); 
         } else {
@@ -176,12 +175,16 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                     scrollY: -window.scrollY, 
                     windowWidth: document.documentElement.offsetWidth,
                     windowHeight: document.documentElement.offsetHeight,
+                    letterRendering: true, // Improve text rendering precision
                     onclone: (clonedDoc) => {
                         const clonedEl = clonedDoc.querySelector('.paper-page') as HTMLElement;
                         if (clonedEl) {
                             clonedEl.style.fontFamily = state.styles.fontFamily;
-                            // Do not force 2.0 line-height here as it breaks KaTeX fractions.
-                            // The line-height is handled by CSS in htmlGenerator (1.6 for text, 1.2 for KaTeX).
+                            // Ensure export container class is present on clones for CSS targeting
+                            const contentDiv = clonedEl.querySelector('.paper-page-content');
+                            if (contentDiv) {
+                                contentDiv.classList.add('export-container');
+                            }
                         }
                     }
                 });
@@ -262,7 +265,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 {pagesHtml.map((html, i) => (
                     <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-10 relative print:shadow-none print:mb-0" 
                         style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX, overflow: 'hidden' }}>
-                        <div className="paper-page-content prose max-w-none" 
+                        <div className="paper-page-content prose max-w-none export-container" 
                              style={{ 
                                  fontFamily: state.styles.fontFamily, 
                                  height: '100%', 
@@ -270,7 +273,6 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                                  padding: '60px',
                                  boxSizing: 'border-box',
                                  overflow: 'hidden',
-                                 // Line height is controlled by inner CSS
                              }} 
                              dangerouslySetInnerHTML={{ __html: html }} 
                         />

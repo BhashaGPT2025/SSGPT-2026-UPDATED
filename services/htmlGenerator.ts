@@ -31,7 +31,7 @@ const toRoman = (num: number): string => {
 // CSS styles injected directly into elements to ensure html2canvas captures them correctly
 // Using Times New Roman and 1.6 line height as requested for better readability and structure
 const styles = {
-    root: `font-family: 'Times New Roman', serif; color: #000; background: #fff; width: 100%; min-height: 100%; line-height: 1.6; font-size: 12pt;`,
+    root: `font-family: 'Times New Roman', serif; color: #000; background: #fff; width: 100%; min-height: 100%; font-size: 12pt;`,
     questionBlock: `break-inside: avoid; page-break-inside: avoid; margin-bottom: 12px; width: 100%; position: relative; padding-bottom: 4px;`,
     questionTable: `width: 100%; border-collapse: collapse; margin-bottom: 4px;`,
     questionNumberTd: `vertical-align: top; width: 35px; font-weight: 700; font-size: 1.1em; padding-top: 2px;`,
@@ -54,7 +54,6 @@ const styles = {
 const renderOptions = (question: Question): string => {
     if (question.type === QuestionType.MultipleChoice && Array.isArray(question.options)) {
         const options = question.options as string[];
-        // Use a grid layout for better spacing and alignment, robust for PDF
         return `<div style="${styles.optionGrid}">
             ${options.map((opt, i) => `<div style="${styles.optionItem}"><span style="font-weight: 600; margin-right: 8px; min-width: 24px;">(${String.fromCharCode(97 + i)})</span> <span>${formatText(opt)}</span></div>`).join('')}
         </div>`;
@@ -133,25 +132,57 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
     let sectionCount = 0;
     const isAnswerKey = options?.isAnswerKey ?? false;
 
-    // Critical: Inject CSS to reset line-height for KaTeX to ensure fractions render correctly.
-    // The global line-height of 1.6 causes KaTeX vertical alignment to break (numerator/denominator drift).
-    // .katex must be 1.1 or normal.
+    // Strict CSS injection for proper math rendering in PDF exports
     let contentHtml = `
         <style>
-            .katex { font-size: 1.15em; line-height: 1.2 !important; text-rendering: optimizeLegibility; }
-            .katex .base { white-space: nowrap; }
+            /* Base math styles */
+            .katex { font-size: 1.15em; text-rendering: optimizeLegibility; }
             .katex-display { margin: 0.8em 0; overflow-x: auto; overflow-y: hidden; }
-            .katex-html { overflow: hidden; }
             
-            /* MathML fallback styling */
-            math { font-size: 16px; }
-            mfrac { vertical-align: middle; }
+            /* Export specific fixes */
+            .katex, .MathJax, .math, .fraction {
+                line-height: normal !important;
+                vertical-align: middle !important;
+                display: inline-block !important;
+                transform: none !important;
+                white-space: nowrap !important;
+            }
+            
+            /* Fraction positioning fix */
+            .katex .frac-line, .MathJax .mfrac {
+                position: relative !important;
+                top: 0 !important;
+                border-bottom-width: 0.04em !important;
+            }
+            
+            /* Prevent denominator overlap */
+            .katex .vlist-t2 {
+                margin-right: 0 !important;
+            }
+
+            /* Container spacing */
+            .export-container {
+                line-height: 1.6 !important;
+                letter-spacing: 0.3px;
+            }
+            
+            @media print {
+                .katex, .MathJax, .math, .fraction {
+                    line-height: normal !important;
+                    vertical-align: middle !important;
+                    display: inline-block !important;
+                    transform: none !important;
+                }
+                .katex .frac-line, .MathJax .mfrac {
+                    position: relative !important;
+                    top: 0 !important;
+                }
+            }
             
             img { max-width: 100%; height: auto; display: block; margin: 8px auto; }
         </style>
     `;
 
-    // Render Header
     const logoSrc = options?.logoConfig?.src;
     const logoAlignment = options?.logoConfig?.alignment ?? 'center';
     const logoImgTag = logoSrc ? `<img src="${logoSrc}" alt="Logo" style="max-height: 90px; margin-bottom: 12px; display: block; margin-left: auto; margin-right: auto;" />` : '';
