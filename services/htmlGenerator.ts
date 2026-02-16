@@ -139,30 +139,48 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
                 text-rendering: geometricPrecision !important;
                 color: #000 !important;
             }
-            .katex-display { margin: 0.8em 0; overflow-x: auto; overflow-y: hidden; }
             
-            /* Export specific fixes */
-            .katex, .MathJax, .math, .fraction {
-                line-height: 1.1 !important; /* Critical for fraction overlap */
-                vertical-align: middle !important;
-                display: inline-block !important;
-                transform: none !important;
-                white-space: nowrap !important;
+            /* GLOBAL KATEZ FIXES FOR PDF */
+            .katex * {
+                color: #000 !important;
+                border-color: #000 !important;
             }
-            
-            /* Fraction positioning fix - Thicker lines for visibility */
-            .katex .frac-line, .MathJax .mfrac {
-                position: relative !important;
-                top: 0 !important;
-                border-bottom-width: 1.5px !important;
-                opacity: 1 !important;
+
+            /* FRACTION RENDERING FIX */
+            /* Force the fraction bar to use background color instead of border to ensure visibility and position */
+            .katex .frac-line {
+                border: none !important;
+                border-bottom: none !important;
                 background-color: #000 !important;
+                height: 1.5px !important; /* Explicit height */
                 min-height: 1.5px !important;
+                width: 100% !important;
+                display: block !important;
+                
+                /* Reset positioning to prevent "flying" bars in html2canvas */
+                transform: none !important;
+                
+                /* Adjust context */
+                opacity: 1 !important;
+                visibility: visible !important;
             }
             
-            /* Prevent denominator overlap */
-            .katex .vlist-t2 {
-                margin-right: 0 !important;
+            /* Ensure the vlist container is positioned correctly relative to the line */
+            .katex .vlist {
+                position: relative !important;
+            }
+            
+            /* Ensure numerator and denominator spans are blocks so they stack properly with the block line */
+            .katex .vlist > span {
+                display: block !important;
+                text-align: center !important;
+            }
+
+            /* General Reset for Export */
+            .katex, .MathJax, .math, .fraction {
+                line-height: normal !important; 
+                vertical-align: baseline !important;
+                white-space: nowrap !important;
             }
 
             /* Container spacing */
@@ -173,17 +191,11 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
             }
             
             @media print {
-                .katex, .MathJax, .math, .fraction {
-                    line-height: 1.1 !important;
-                    vertical-align: middle !important;
-                    display: inline-block !important;
-                    transform: none !important;
-                    color: #000 !important;
-                }
-                .katex .frac-line, .MathJax .mfrac {
-                    border-bottom-width: 2px !important;
+               .katex .frac-line {
                     background-color: #000 !important;
-                }
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+               }
             }
             
             img { max-width: 100%; height: auto; display: block; margin: 8px auto; }
