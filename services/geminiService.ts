@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type, FunctionDeclaration, Modality, Chat, Part, GenerateContentResponse, GenerateContentConfig } from "@google/genai";
-import { type FormData, type QuestionPaperData, QuestionType, Question, Difficulty, Taxonomy, AnalysisResult } from '../types';
+import { type FormData, type QuestionPaperData, Question, AnalysisResult } from '../types';
 import { generateHtmlFromPaperData } from "./htmlGenerator";
+import { generatePaperFunctionDeclaration, systemInstruction } from '../constants';
 export { generateHtmlFromPaperData };
 
 const handleApiError = (error: any, context: string) => {
@@ -39,23 +40,24 @@ const parseAiJson = (text: string) => {
     }
 };
 
-export const extractConfigFromTranscript = async (transcript: string): Promise<any> => {
+export const rewriteTranscript = async (rawText: string): Promise<string> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
+    if (!rawText.trim()) return rawText;
+    
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `Extract academic configuration from: "${transcript}". 
-    Return JSON: {schoolName, className, subject, topics, difficulty, timeAllowed, questionDistribution: [{type, count, marks, taxonomy, difficulty}]}. 
-    Use LaTeX with double backslashes for any math.`;
+    const prompt = `Rewrite the following user utterance into a clean, professional, and grammatically correct sentence. Correct any mistakes and add any missing words to make it sound like a formal request. Do not add any extra commentary, just provide the rewritten sentence.\n\nRaw utterance: "${rawText}"\n\nRewritten sentence:`;
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
             contents: prompt,
-            config: { responseMimeType: "application/json" }
         });
-        return parseAiJson(response.text as string);
+        return response.text?.trim() || rawText;
     } catch (error) {
-        handleApiError(error, "extractConfigFromTranscript");
+        console.error("Error rewriting transcript:", error);
+        return rawText; // fallback to raw text on error
     }
 };
+
 
 export const generateQuestionPaper = async (formData: FormData): Promise<QuestionPaperData> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
@@ -149,6 +151,81 @@ Return only a valid JSON array of question objects.
     }
 };
 
+// Fix: Implemented and exported `generateChatResponseStream` to resolve the missing member error.
+export const generateChatResponseStream = async (
+    chat: Chat,
+    messageParts: Part[],
+    useSearch: boolean,
+    useThinking: boolean
+) => {
+    // If no special config is needed, use the efficient, history-aware method.
+    if (!useSearch && !useThinking) {
+        return chat.sendMessageStream(messageParts);
+    }
+
+    // For dynamic configs (search/thinking), a one-off `generateContentStream` call is necessary.
+    // Note: This approach uses the chat history but doesn't automatically update the original Chat object state.
+    if (!process.env.API_KEY) throw new Error("API_KEY is not configured.");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+    const config: GenerateContentConfig = { systemInstruction };
+    let model = 'gemini-flash-lite-latest'; // Default model from chat
+
+    if (useSearch) {
+        // As per guidelines, googleSearch is a standalone tool and requires a compatible model.
+        config.tools = [{ googleSearch: {} }];
+        model = 'gemini-3-flash-preview';
+    } else {
+        // Retain the function calling tool for non-search queries.
+        config.tools = [{ functionDeclarations: [generatePaperFunctionDeclaration] }];
+    }
+
+    if (useThinking) {
+        // Using a safe budget for flash models.
+        config.thinkingConfig = { thinkingBudget: 24576 };
+    }
+
+    const contents = [...chat.history, { role: 'user', parts: messageParts }];
+
+    return ai.models.generateContentStream({
+        model,
+        contents,
+        config,
+    });
+};
+
+// Fix: Implemented and exported `generateTextToSpeech` to resolve the missing member error.
+export const generateTextToSpeech = async (text: string): Promise<string> => {
+    if (!process.env.API_KEY) throw new Error("API_KEY is not configured.");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-tts",
+            contents: [{ parts: [{ text }] }],
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: {
+                    voiceConfig: {
+                        // Using a standard, pleasant voice.
+                        prebuiltVoiceConfig: { voiceName: 'Kore' },
+                    },
+                },
+            },
+        });
+
+        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+
+        if (!base64Audio) {
+            throw new Error("AI did not return any audio data.");
+        }
+        return base64Audio;
+    } catch (error) {
+        handleApiError(error, "generateTextToSpeech");
+        throw error;
+    }
+};
+
+
 export const generateImage = async (prompt: string, aspectRatio: string = '1:1'): Promise<string> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -207,57 +284,4 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
         config: { responseMimeType: "application/json" }
     });
     return parseAiJson(response.text as string) as AnalysisResult;
-};
-
-// Fix: Add generateChatResponseStream to fix import errors in ChatbotInterface.
-export const generateChatResponseStream = async (
-    chat: Chat,
-    parts: Part[],
-    useSearch: boolean,
-    useThinking: boolean
-) => {
-    const config: GenerateContentConfig = {};
-    if (useSearch) {
-        config.tools = [{ googleSearch: {} }];
-    }
-    if (useThinking) {
-        // The chat is initialized with `gemini-flash-lite-latest`. Max budget for flash/lite is 24576.
-        config.thinkingConfig = { thinkingBudget: 24576 }; 
-    }
-    
-    return chat.sendMessageStream({
-        message: parts,
-        config: (Object.keys(config).length > 0) ? config : undefined,
-    });
-};
-
-// Fix: Add generateTextToSpeech to fix import errors in ChatbotInterface.
-export const generateTextToSpeech = async (text: string): Promise<string> => {
-    if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-preview-tts",
-            contents: [{ parts: [{ text }] }],
-            config: {
-                responseModalities: [Modality.AUDIO],
-                speechConfig: {
-                    voiceConfig: {
-                        prebuiltVoiceConfig: { voiceName: 'Kore' }, // Default voice
-                    },
-                },
-            },
-        });
-
-        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (base64Audio) {
-            return base64Audio;
-        }
-        throw new Error("No audio data returned from TTS API.");
-
-    } catch (error) {
-        handleApiError(error, "generateTextToSpeech");
-        throw error;
-    }
 };

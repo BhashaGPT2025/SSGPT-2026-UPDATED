@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { type FormData, QuestionType, type QuestionDistributionItem, Difficulty, Taxonomy, User } from '../types';
 import { LANGUAGES, QUESTION_TYPES, DIFFICULTY_LEVELS, BLOOM_TAXONOMY_LEVELS } from '../constants';
-import { VoiceConfigurator } from './VoiceConfigurator';
 
 interface GeneratorFormProps {
   onSubmit: (formData: FormData) => void;
   isLoading: boolean;
   user: User;
+  initialData?: Partial<FormData> | null;
+  onClearInitialData?: () => void;
 }
 
 const PlusIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -42,7 +43,7 @@ const FormField: React.FC<{name: string, label: string, value: string, onChange:
     )
 }
 
-const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user }) => {
+const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user, initialData, onClearInitialData }) => {
   const [formData, setFormData] = useState({
     schoolName: user.defaultSchoolName || '',
     className: '',
@@ -54,6 +55,20 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
     sourceMode: 'reference' as 'strict' | 'reference',
     modelQuality: 'flash' as 'flash' | 'pro',
   });
+  
+  useEffect(() => {
+    if (initialData) {
+        setFormData(prev => ({ 
+            ...prev, 
+            ...initialData,
+            schoolName: initialData.schoolName || prev.schoolName,
+         }));
+        if(initialData.questionDistribution) {
+            setQuestionDistribution(initialData.questionDistribution);
+        }
+        onClearInitialData?.();
+    }
+  }, [initialData, onClearInitialData]);
   
   useEffect(() => {
     setFormData(prev => ({...prev, schoolName: user.defaultSchoolName || ''}));
@@ -77,31 +92,6 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleVoiceConfig = (extracted: any) => {
-      setFormData(prev => ({
-          ...prev,
-          schoolName: extracted.schoolName || prev.schoolName,
-          className: extracted.className || prev.className,
-          subject: extracted.subject || prev.subject,
-          topics: extracted.topics || prev.topics,
-          timeAllowed: extracted.timeAllowed || prev.timeAllowed,
-      }));
-      
-      if (extracted.questionDistribution && Array.isArray(extracted.questionDistribution)) {
-          const newDist: QuestionDistributionItem[] = extracted.questionDistribution.map((d: any, i: number) => ({
-              id: `voice-dist-${Date.now()}-${i}`,
-              type: d.type as QuestionType,
-              count: d.count || 5,
-              marks: d.marks || 1,
-              difficulty: extracted.difficulty || Difficulty.Medium,
-              taxonomy: d.taxonomy || Taxonomy.Understanding
-          }));
-          setQuestionDistribution(newDist);
-      }
-      
-      alert("Voice configuration applied successfully.");
   };
 
   const blobToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
@@ -253,10 +243,9 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
                         <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Create a New Question Paper</h2>
-                        <p className="mt-2 text-slate-600 dark:text-slate-400">Fill in the details below or use Voice Builder.</p>
+                        <p className="mt-2 text-slate-600 dark:text-slate-400">Fill in the details below to generate your paper.</p>
                     </div>
                     <div className="flex items-center gap-3">
-                        <VoiceConfigurator onConfigExtracted={handleVoiceConfig} />
                         <button
                             type="button"
                             onClick={handleTrySample}

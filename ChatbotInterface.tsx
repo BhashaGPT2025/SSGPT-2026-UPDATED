@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+// Fix: Import `generateChatResponseStream` and `generateTextToSpeech` from `geminiService` to resolve missing member errors.
 import { GoogleGenAI, Chat, FunctionDeclaration, Type, LiveServerMessage, Modality, Blob, Part } from "@google/genai";
 import { type FormData, QuestionType, Difficulty, Taxonomy, type VoiceOption } from '../types';
 import { generateChatResponseStream, generateTextToSpeech } from '../services/geminiService';
@@ -7,7 +8,8 @@ import { AttachmentIcon } from './icons/AttachmentIcon';
 import { VoiceIcon } from './icons/VoiceIcon';
 import { StopIcon } from './icons/StopIcon';
 import VoiceModeModal from './VoiceModeModal';
-import { SSGPT_LOGO_URL } from '../constants';
+// Fix: Import `systemInstruction` and `generatePaperFunctionDeclaration` from the centralized `constants` file.
+import { SSGPT_LOGO_URL, systemInstruction, generatePaperFunctionDeclaration } from '../constants';
 
 // --- Types ---
 type Message = { id: string; sender: 'bot' | 'user'; text: string; grounding?: any[] };
@@ -19,22 +21,6 @@ const CopyIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => ( <svg xmln
 const NewChatIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => ( <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M12 5l0 14" /><path d="M5 12l14 0" /></svg>);
 const SendIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => ( <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="currentColor" {...props}><path d="M3.4 20.4l17.45-7.48c.81-.35.81-1.49 0-1.84L3.4 3.6c-.66-.29-1.39.2-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z"></path></svg>);
 const SpeakIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>);
-
-const generatePaperFunctionDeclaration: FunctionDeclaration = { name: 'generatePaper', description: 'Call this function ONLY when all necessary details for creating a question paper have been collected. This is a specialized tool and should not be used for general queries.', parameters: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING, description: "The name of the school or institution." }, className: { type: Type.STRING, description: "The grade or class level (e.g., '10th Grade')." }, subject: { type: Type.STRING, description: "The subject of the exam (e.g., 'Physics')." }, topics: { type: Type.STRING, description: "A comma-separated list of topics to be covered." }, timeAllowed: { type: Type.STRING, description: "The total time allowed for the exam, e.g., '2 hours 30 minutes'." }, sourceMaterials: { type: Type.STRING, description: "Optional text, URLs, or references provided by the user that should be used as a primary source for generating questions." }, sourceMode: { type: Type.STRING, enum: ['strict', 'reference'], description: "Determines how the source materials are used. 'strict' means only use the provided materials. 'reference' means use them as a primary guide but allow other relevant questions. Default to 'reference' if unsure." }, questionDistribution: { type: Type.ARRAY, description: "The breakdown of questions by type, count, marks, difficulty, and taxonomy.", items: { type: Type.OBJECT, properties: { type: { type: Type.STRING, enum: Object.values(QuestionType) }, count: { type: Type.INTEGER }, marks: { type: Type.INTEGER }, difficulty: { type: Type.STRING, enum: Object.values(Difficulty) }, taxonomy: { type: Type.STRING, enum: Object.values(Taxonomy) }, }, required: ['type', 'count', 'marks', 'difficulty', 'taxonomy'] } }, language: { type: Type.STRING, description: "The language the paper should be written in (e.g., 'English')." }, }, required: ['schoolName', 'className', 'subject', 'topics', 'questionDistribution', 'language', 'timeAllowed'] } };
-const systemInstruction = `You are SSGPT, a state-of-the-art, multi-purpose AI assistant integrated into an application for educators. You are a versatile and powerful AI, like Gemini, capable of handling a wide array of tasks.
-
-**Your Core Capabilities:**
-1.  **General Assistant:** You can answer questions, write code, brainstorm ideas, summarize text, translate languages, and perform any other general AI task a user might ask for. Be helpful, creative, and knowledgeable.
-2.  **Expert Exam Creator:** You have a special tool, \`generatePaper\`, which is your primary function within this specific application. You must guide educators through the process of creating a question paper. If the user uploads images of handwritten questions, analyze them using OCR and start the conversation to build a question paper from them.
-
-**Interaction Guidelines:**
-- **Persona:** Be friendly, professional, and proactive. Start with a warm welcome and make it clear you can help with anything, not just making papers.
-- **Primary Goal:** Your main objective is to assist the user. If they want to generate a paper, you MUST collaboratively gather all the required details: School Name, Class, Subject, Topics, Time Allowed, a complete Question Distribution, and Language. Also, ask if they have any source materials to provide. If they provide source materials, you should also ask them if the questions should be **strictly** from the materials or if the materials should be used as a **reference**.
-- **Tool Usage:**
-  - Use the \`generatePaper\` function ONLY when you have gathered ALL the necessary information.
-  - If the user provides text or attaches a file (including images), treat it as potential source material and include it in the 'sourceMaterials' argument when calling the 'generatePaper' tool. Set 'sourceMode' to 'strict' or 'reference' based on their preference. Default to 'reference' if they don't specify.
-  - For any other request (e.g., "What is photosynthesis?", "Write a python script", "Give me ideas for a class project"), provide a direct text-based answer. Do NOT use the \`generatePaper\` tool for these.
-- **Initiating Conversation:** Start by introducing yourself and highlighting your dual capabilities. For example: "Hello! I'm SSGPT, your AI assistant. I can help you with a variety of tasks, or we can jump right into creating the perfect question paper. What's on your mind today?"`;
 
 const blobToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onloadend = () => resolve((reader.result as string).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); });
 function parseMarkdownToHTML(text: string) { let html = text.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); html = html.replace(/```([\s\S]*?)```/g, (match, code) => `<pre><code>${code.trim()}</code></pre>`); html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'); html = html.replace(/\*(.*?)\*/g, '<em>$1</em>'); html = html.replace(/^([ \t]*)([\*\-]) (.*$)/gm, (match, indent, bullet, content) => `${indent}<ul><li>${content}</li></ul>`); html = html.replace(/<\/ul>\s*<ul>/g, ''); html = html.replace(/^([ \t]*)\d+\. (.*$)/gm, (match, indent, content) => `${indent}<ol><li>${content}</li></ol>`); html = html.replace(/<\/ol>\s*<ol>/g, ''); html = html.replace(/\n/g, '<br />').replace(/(<br \/>\s*){2,}/g, '<br />'); return html; }
