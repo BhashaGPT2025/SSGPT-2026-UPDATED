@@ -24,7 +24,6 @@ import PublicPaperView from './components/PublicPaperView';
 import Header from './Header';
 import { ImageGallery } from './components/ImageGallery';
 import { ProImageEditor } from './components/ProImageEditor';
-import ChatbotInterface from './components/ChatbotInterface';
 
 
 function App() {
@@ -170,7 +169,7 @@ function App() {
     });
 
   }, [currentUser]);
-
+  
   const handleAnalysisComplete = (paper: QuestionPaperData) => {
     setIsLoading(true);
     setError(null);
@@ -373,8 +372,6 @@ function App() {
             return <Settings user={currentUser} theme={theme} toggleTheme={toggleTheme} onLogout={handleLogout} />;
           case 'gallery':
             return <ImageGallery onEditImage={handleEditImage} />;
-          case 'chat':
-            return <ChatbotInterface onGenerate={handleGenerate} />;
           default:
             return <TeacherDashboard user={currentUser} papers={papers} onNavigate={handleNavigate} onEditPaper={handleEditPaper} onRenamePaper={handleRenamePaper} onDuplicatePaper={handleDuplicatePaper} onDeletePaper={handleDeletePaper} />;
         }
@@ -397,8 +394,6 @@ function App() {
                 return <Settings user={currentUser} theme={theme} toggleTheme={toggleTheme} onLogout={handleLogout} />;
             case 'gallery':
                 return <ImageGallery onEditImage={handleEditImage} />;
-            case 'chat':
-                return <ChatbotInterface onGenerate={handleGenerate} />;
             default:
                 return <StudentDashboard user={currentUser} onNavigate={handleNavigate} onViewPaperFromUrl={handleStudentViewPaperFromUrl} />;
         }

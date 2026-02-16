@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 // Fix: Import `generateChatResponseStream` and `generateTextToSpeech` from `geminiService` to resolve missing member errors.
 import { GoogleGenAI, Chat, FunctionDeclaration, Type, LiveServerMessage, Modality, Blob, Part } from "@google/genai";
+// Fix: Import VoiceOption to resolve type error.
 import { type FormData, QuestionType, Difficulty, Taxonomy, type VoiceOption } from '../types';
 import { generateChatResponseStream, generateTextToSpeech } from '../services/geminiService';
 import { SpinnerIcon } from './icons/SpinnerIcon';
@@ -43,7 +44,8 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     try {
       if (!process.env.API_KEY) throw new Error("API_KEY is not configured.");
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const newChat = ai.chats.create({ model: 'gemini-flash-lite-latest', config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperFunctionDeclaration] }] } });
+      // Fix: Use full model name as per guidelines.
+      const newChat = ai.chats.create({ model: 'gemini-2.5-flash-lite-latest', config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperFunctionDeclaration] }] } });
       setChat(newChat);
       const importedFilesRaw = sessionStorage.getItem('ssgpt_imported_files');
       if (!importedFilesRaw) {

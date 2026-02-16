@@ -1,316 +1,215 @@
-import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
-import { Chat } from '@google/genai';
-import { type QuestionPaperData, type PaperStyles, type ImageState, type TextBoxState, Question, WatermarkState, LogoState, QuestionType, UploadedImage, Difficulty, Taxonomy } from '../types';
-import { createEditingChat, getAiEditResponse, generateHtmlFromPaperData } from '../services/geminiService';
-import EditorSidebar from './EditorToolbar';
-import EditableImage from './EditableImage';
-import CoEditorChat, { type CoEditorMessage } from './CoEditorChat';
-import { AiIcon } from './icons/AiIcon';
-import { GalleryIcon } from './icons/GalleryIcon';
-import { ImageGallery } from './ImageGallery';
+
+import React, { useCallback, useRef, useState, useEffect } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Underline from '@tiptap/extension-underline';
+import TextAlign from '@tiptap/extension-text-align';
+import Placeholder from '@tiptap/extension-placeholder';
+import { generateHtmlFromPaperData } from '../services/htmlGenerator';
+import { QuestionPaperData } from '../types';
+import { CustomImage } from './EditorImage';
+import { UploadIcon } from './icons/UploadIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
-const A4_WIDTH_PX = 794; 
-const A4_HEIGHT_PX = 1123;
+// --- Constants ---
+const A4_WIDTH_MM = 210;
+const A4_HEIGHT_MM = 297;
+const PIXELS_PER_MM = 3.7795275591; 
+const A4_WIDTH_PX = Math.round(A4_WIDTH_MM * PIXELS_PER_MM);
+const A4_HEIGHT_PX = Math.round(A4_HEIGHT_MM * PIXELS_PER_MM);
 
-const triggerMathRendering = (element: HTMLElement | null): Promise<void> => {
-    return new Promise((resolve) => {
-        if (!element || !(window as any).renderMathInElement) {
-            resolve();
-            return;
+interface EditorProps {
+  paperData: QuestionPaperData;
+  onSave: (p: QuestionPaperData) => void;
+  onSaveAndExit: () => void;
+  onReady: () => void;
+}
+
+const Editor = React.forwardRef<any, EditorProps>(({ paperData, onSaveAndExit, onReady }, ref) => {
+  const [isExporting, setIsExporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Underline,
+      TextAlign.configure({
+        types: ['heading', 'paragraph', 'image'],
+      }),
+      Placeholder.configure({
+        placeholder: 'Start typing your question paper...',
+      }),
+      CustomImage.configure({
+        inline: true,
+        allowBase64: true,
+      }),
+    ],
+    content: '', 
+    editorProps: {
+      attributes: {
+        class: 'prose max-w-none focus:outline-none min-h-[1000px] p-12 outline-none',
+      },
+      handleDrop: (view, event, slice, moved) => {
+        if (!moved && event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+          const file = event.dataTransfer.files[0];
+          if (file.type.startsWith('image/')) {
+            event.preventDefault();
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const { schema } = view.state;
+              const coordinates = view.posAtCoords({ left: event.clientX, top: event.clientY });
+              if (coordinates) {
+                const node = schema.nodes.image.create({ src: e.target?.result });
+                const transaction = view.state.tr.insert(coordinates.pos, node);
+                view.dispatch(transaction);
+              }
+            };
+            reader.readAsDataURL(file);
+            return true;
+          }
         }
-        try {
-            (window as any).renderMathInElement(element, { 
-                delimiters: [
-                    {left: '$$', right: '$$', display: true},
-                    {left: '$', right: '$', display: false},
-                    {left: '\\(', right: '\\)', display: false},
-                    {left: '\\[', right: '\\]', display: true}
-                ], 
-                throwOnError: false,
-                output: 'html', // Use HTML output for better accessibility and potentially better PDF capture
-                strict: false
-            });
-        } catch (err) {
-            console.error("KaTeX render error:", err);
-        }
-        // Wait longer for layout thrashing to settle
-        setTimeout(resolve, 300);
-    });
-};
+        return false;
+      }
+    },
+  });
 
-const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: QuestionPaperData) => void; onSaveAndExit: () => void; onReady: () => void; }>((props, ref) => {
-    const { paperData, onSave, onSaveAndExit, onReady } = props;
+  useEffect(() => {
+    if (editor && paperData) {
+      // Small delay to ensure editor is mounted
+      setTimeout(() => {
+          const initialHtml = generateHtmlFromPaperData(paperData);
+          editor.commands.setContent(initialHtml);
+          onReady();
+      }, 100);
+    }
+  }, [editor, paperData, onReady]);
+
+  React.useImperativeHandle(ref, () => ({
+    handleSaveAndExitClick: onSaveAndExit,
+    openExportModal: handleExportPDF,
+    paperSubject: paperData.subject,
+    openAnswerKeyModal: () => {},
+    isAnswerKeyMode: false,
+    isSaving: false,
+    undo: () => editor?.chain().focus().undo().run(),
+    redo: () => editor?.chain().focus().redo().run(),
+    canUndo: editor?.can().undo(),
+    canRedo: editor?.can().redo(),
+  }));
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && editor) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        editor.chain().focus().setImage({ src: event.target?.result as string }).run();
+      };
+      reader.readAsDataURL(file);
+    }
+    if (e.target) e.target.value = '';
+  };
+
+  const handleExportPDF = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
     
-    const [state, setState] = useState<{
-        paper: QuestionPaperData;
-        styles: PaperStyles;
-        images: ImageState[];
-        logo: LogoState;
-        watermark: WatermarkState;
-    }>({
-        paper: paperData,
-        styles: { fontFamily: "'Times New Roman', Times, serif", headingColor: '#000000', borderColor: '#000000', borderWidth: 1, borderStyle: 'solid' },
-        images: [],
-        logo: { src: paperData.schoolLogo, position: paperData.schoolLogo ? 'header-center' : 'none', size: 150, opacity: 0.1 },
-        watermark: { type: 'none', text: 'DRAFT', color: '#cccccc', fontSize: 80, opacity: 0.1, rotation: -45 },
-    });
+    // Target the specific Prosemirror content div
+    const element = document.querySelector('.ProseMirror');
+    if (!element) {
+        setIsExporting(false);
+        return;
+    }
 
-    const [isExporting, setIsExporting] = useState(false);
-    const [isAnswerKeyMode, setIsAnswerKeyMode] = useState(false);
-    const [sidebarView, setSidebarView] = useState<'toolbar' | 'chat' | 'gallery'>('toolbar');
-    const [coEditorMessages, setCoEditorMessages] = useState<CoEditorMessage[]>([]);
-    const [isCoEditorTyping, setIsCoEditorTyping] = useState(false);
-    const [editingChat, setEditingChat] = useState<Chat | null>(null);
-    const [pagesHtml, setPagesHtml] = useState<string[]>([]);
-    const pagesContainerRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        setEditingChat(createEditingChat(paperData));
-        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Paper formatting optimized for board standards. Ready for review." }]);
-        onReady();
-    }, []);
-
-    const paginate = useCallback(async () => {
-        // Create measurement container that mimics the exact print page environment
-        const container = document.createElement('div');
-        container.style.width = `${A4_WIDTH_PX}px`; 
-        container.style.position = 'absolute';
-        container.style.left = '-9999px';
-        container.style.top = '0';
-        container.style.visibility = 'hidden'; 
-        // Important: Match padding used in display
-        container.style.padding = '60px'; 
-        container.style.boxSizing = 'border-box';
-        container.style.backgroundColor = 'white';
-        // Match typography explicitly
-        container.style.fontFamily = state.styles.fontFamily;
-        
-        // Use Tailwind prose classes to match the render environment
-        container.className = 'prose max-w-none print-container';
-
-        const htmlContent = generateHtmlFromPaperData(state.paper, { 
-            logoConfig: state.logo.src ? { src: state.logo.src, alignment: 'center' } : undefined,
-            isAnswerKey: isAnswerKeyMode
-        });
-        
-        container.innerHTML = htmlContent; // htmlGenerator wraps content in #paper-root
-        document.body.appendChild(container);
-
-        // Wait for fonts to load to ensure accurate height measurement
-        await document.fonts.ready;
-
-        // Render math in the hidden container BEFORE measuring to get accurate heights
-        await triggerMathRendering(container);
-        
-        const contentRoot = container.querySelector('#paper-root');
-        const children = Array.from(contentRoot?.children || []);
-        
-        const pages: string[] = [];
-        let currentPageHtml = ""; 
-        let currentHeight = 0;
-        
-        // Page height - Padding - Safety Buffer
-        // A4 Height: 1123px. Padding: 60px top + 60px bottom = 120px. 
-        // Available height = 1003px.
-        // Safety buffer for browser rendering differences: 50px.
-        const maxPageHeight = A4_HEIGHT_PX - 120 - 50; 
-
-        children.forEach(child => {
-            const el = child as HTMLElement;
-            
-            // Get accurate height including margins using Computed Style
-            const style = window.getComputedStyle(el);
-            const marginTop = parseFloat(style.marginTop || '0');
-            const marginBottom = parseFloat(style.marginBottom || '0');
-            // Use getBoundingClientRect for sub-pixel precision which offsetHeight lacks
-            const rect = el.getBoundingClientRect();
-            const elHeight = rect.height + marginTop + marginBottom;
-            
-            // Check if element exceeds remaining space on page
-            if (currentHeight > 0 && currentHeight + elHeight > maxPageHeight) { 
-                pages.push(currentPageHtml); 
-                currentPageHtml = ""; 
-                currentHeight = 0; 
-            }
-            
-            currentPageHtml += el.outerHTML; 
-            currentHeight += elHeight;
+    try {
+        const canvas = await html2canvas(element as HTMLElement, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff'
         });
 
-        // Push the last page
-        if (currentPageHtml) pages.push(currentPageHtml);
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
         
-        document.body.removeChild(container);
-
-        if (pages.length === 0 && htmlContent) {
-            setPagesHtml([htmlContent]); // Failsafe
-        } else {
-            setPagesHtml(pages);
-        }
+        const imgProps = pdf.getImageProperties(imgData);
+        const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
         
-    }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
+        let heightLeft = imgHeight;
+        let position = 0;
 
-    useEffect(() => {
-        // Debounce pagination to prevent flashing
-        const timeoutId = setTimeout(() => {
-            paginate().then(() => {
-                // Re-render math on visible pages after state update
-                setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
-            });
-        }, 100);
-        return () => clearTimeout(timeoutId);
-    }, [paginate]);
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+        heightLeft -= pdfHeight;
 
-    const handleExportPDF = async () => {
-        if (isExporting) return;
-        setIsExporting(true);
-        try {
-            const pdf = new jsPDF('p', 'px', 'a4');
-            const pdfW = pdf.internal.pageSize.getWidth();
-            const pdfH = pdf.internal.pageSize.getHeight();
-            const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page');
-            
-            if (!pageElements || pageElements.length === 0) {
-                alert("Nothing to export.");
-                setIsExporting(false);
-                return;
-            }
-            
-            for (let i = 0; i < pageElements.length; i++) {
-                const el = pageElements[i] as HTMLElement;
-                
-                // Use html2canvas with specific settings to fix fractional overlap and clarity
-                const canvas = await html2canvas(el, { 
-                    scale: 2, // Higher scale for better text clarity
-                    useCORS: true, 
-                    backgroundColor: '#ffffff',
-                    logging: false,
-                    allowTaint: true,
-                    // Fix vertical offset issues
-                    scrollY: -window.scrollY, 
-                    windowWidth: document.documentElement.offsetWidth,
-                    windowHeight: document.documentElement.offsetHeight,
-                    onclone: (clonedDoc) => {
-                        // Ensure cloned document has the correct font family
-                        const clonedEl = clonedDoc.querySelector('.paper-page') as HTMLElement;
-                        if (clonedEl) {
-                            clonedEl.style.fontFamily = state.styles.fontFamily;
-                        }
-                    }
-                });
-                
-                const imgData = canvas.toDataURL('image/png');
-                if (i > 0) pdf.addPage();
-                
-                // Adjust dimensions to fit PDF exactly
-                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
-            }
-            const suffix = isAnswerKeyMode ? '_Answer_Key' : '_Question_Paper';
-            pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}${suffix}.pdf`);
-        } catch (error) {
-            console.error("PDF Export Error:", error);
-            alert("Internal Error Occurred during export.");
-        } finally {
-            setIsExporting(false);
+        while (heightLeft >= 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+          heightLeft -= pdfHeight;
         }
-    };
 
-    const handleCoEditorSend = async (msg: string) => {
-        if (!editingChat || isCoEditorTyping) return;
-        setCoEditorMessages(prev => [...prev, { id: Date.now().toString(), sender: 'user', text: msg }]);
-        setIsCoEditorTyping(true);
-        try {
-            const res = await getAiEditResponse(editingChat, msg);
-            if (res.text) {
-                setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Updated." }]);
-                setTimeout(() => triggerMathRendering(document.querySelector('.chat-scrollbar')), 100);
-            }
-        } catch (e) { console.error(e); }
-        finally { setIsCoEditorTyping(false); }
-    };
+        pdf.save(`${paperData.subject || 'paper'}.pdf`);
 
-    useImperativeHandle(ref, () => ({
-        handleSaveAndExitClick: onSaveAndExit,
-        openExportModal: handleExportPDF,
-        openAnswerKeyModal: () => setIsAnswerKeyMode(prev => !prev),
-        paperSubject: state.paper.subject,
-        isAnswerKeyMode
-    }));
+    } catch (error) {
+        console.error("Export failed", error);
+        alert("Could not export PDF. Please try again.");
+    } finally {
+        setIsExporting(false);
+    }
+  };
 
-    return (
-        <div className="flex h-full bg-slate-200 dark:bg-gray-900 overflow-hidden relative">
-            {isExporting && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center text-white">
-                    <SpinnerIcon className="w-16 h-16 mb-6 text-indigo-400" />
-                    <h2 className="text-2xl font-black tracking-tight">Finalizing PDF</h2>
-                    <p className="text-slate-400 mt-2 px-10 text-center">Rendering math equations and optimizing layout...</p>
-                </div>
-            )}
-            <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
-                <div className="flex border-b dark:border-slate-800">
-                    <button onClick={() => setSidebarView('toolbar')} className={`flex-1 p-3 text-xs font-black tracking-tighter uppercase ${sidebarView === 'toolbar' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>Design</button>
-                    <button onClick={() => setSidebarView('chat')} className={`flex-1 p-3 text-xs font-black tracking-tighter uppercase ${sidebarView === 'chat' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><AiIcon className="w-4 h-4 mx-auto"/></button>
-                    <button onClick={() => setSidebarView('gallery')} className={`flex-1 p-3 text-xs font-black tracking-tighter uppercase ${sidebarView === 'gallery' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><GalleryIcon className="w-4 h-4 mx-auto"/></button>
-                </div>
-                <div className="flex-1 overflow-y-auto chat-scrollbar">
-                    {sidebarView === 'toolbar' && (
-                        <EditorSidebar 
-                            styles={state.styles} 
-                            onStyleChange={(k, v) => setState(s => ({...s, styles: {...s.styles, [k]: v}}))} 
-                            paperSize="a4" 
-                            onPaperSizeChange={()=>{}} 
-                            logo={state.logo} 
-                            watermark={state.watermark} 
-                            onBrandingUpdate={u => setState(s => ({...s, ...u}))} 
-                            onOpenImageModal={() => {}} 
-                            onUploadImageClick={() => {}} 
-                            isAnswerKeyMode={isAnswerKeyMode}
-                            onToggleShowQuestions={() => setIsAnswerKeyMode(p => !p)}
-                        />
-                    )}
-                    {sidebarView === 'chat' && <CoEditorChat messages={coEditorMessages} isTyping={isCoEditorTyping} onSendMessage={handleCoEditorSend} />}
-                    {sidebarView === 'gallery' && <ImageGallery isCompact onEditImage={() => {}} />}
-                </div>
+  if (!editor) {
+    return <div className="flex items-center justify-center h-screen"><SpinnerIcon className="w-8 h-8 text-indigo-600" /></div>;
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-slate-100 dark:bg-slate-900 overflow-hidden">
+        {isExporting && (
+            <div className="fixed inset-0 bg-black/80 z-[100] flex flex-col items-center justify-center text-white">
+                <SpinnerIcon className="w-12 h-12 mb-4" />
+                <p className="text-xl font-bold">Generating PDF...</p>
             </div>
-            <main className="flex-1 overflow-auto p-8 bg-slate-300 dark:bg-slate-950/20" ref={pagesContainerRef}>
-                {pagesHtml.map((html, i) => (
-                    <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-10 relative print:shadow-none print:mb-0" 
-                        style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX, overflow: 'hidden' }}>
-                        {/* Wrapper to emulate padding but allow html2canvas to capture full element */}
-                        <div className="paper-page-content prose max-w-none" 
-                             style={{ 
-                                 fontFamily: state.styles.fontFamily, 
-                                 height: '100%', 
-                                 background: 'white', 
-                                 padding: '60px',
-                                 boxSizing: 'border-box',
-                                 overflow: 'hidden'
-                             }} 
-                             dangerouslySetInnerHTML={{ __html: html }} 
-                        />
-                        {/* Watermark Overlay */}
-                        {state.watermark.type !== 'none' && (
-                            <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-0 overflow-hidden" style={{ opacity: state.watermark.opacity }}>
-                                {state.watermark.type === 'text' && (
-                                    <div style={{ 
-                                        transform: `rotate(${state.watermark.rotation}deg)`, 
-                                        fontSize: `${state.watermark.fontSize}px`, 
-                                        color: state.watermark.color,
-                                        fontWeight: 'bold',
-                                        whiteSpace: 'nowrap'
-                                    }}>
-                                        {state.watermark.text}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                ))}
-            </main>
+        )}
+
+      <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-2 flex items-center justify-center gap-4 shadow-sm z-10 h-16 shrink-0">
+        <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors font-medium text-sm"
+        >
+            <UploadIcon className="w-4 h-4" />
+            Insert Image
+        </button>
+        <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleImageUpload} 
+            className="hidden" 
+            accept="image/*" 
+        />
+        <div className="w-px h-6 bg-slate-300 dark:bg-slate-600 mx-2" />
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+            Click anywhere to edit text • Drag image handles to resize
+        </p>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-8 flex justify-center bg-slate-200 dark:bg-slate-950">
+        <div 
+            className="bg-white text-black shadow-2xl transition-all prose-lg print:shadow-none"
+            style={{
+                width: `${A4_WIDTH_PX}px`,
+                minHeight: `${A4_HEIGHT_PX}px`,
+                maxWidth: '100%',
+                padding: '0', 
+            }}
+        >
+            <EditorContent editor={editor} />
         </div>
-    );
+      </div>
+    </div>
+  );
 });
+
 export default Editor;

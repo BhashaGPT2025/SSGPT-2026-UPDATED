@@ -1,8 +1,6 @@
-
-import { GoogleGenAI, Type, FunctionDeclaration, Modality, Chat, Part, GenerateContentResponse, GenerateContentConfig } from "@google/genai";
+import { GoogleGenAI, Type, FunctionDeclaration, Modality, Chat, Part, GenerateContentResponse } from "@google/genai";
 import { type FormData, type QuestionPaperData, Question, AnalysisResult } from '../types';
 import { generateHtmlFromPaperData } from "./htmlGenerator";
-import { generatePaperFunctionDeclaration, systemInstruction } from '../constants';
 export { generateHtmlFromPaperData };
 
 const handleApiError = (error: any, context: string) => {
@@ -46,7 +44,6 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles, modelQuality } = formData;
     
-    // Fix: Updated model selection to align with guidelines for complex tasks and avoid prohibited models.
     const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
     const finalPrompt = `
@@ -57,7 +54,7 @@ You are a Senior Academic Examiner. Your task is to generate a high-quality, pro
 - Use formal academic tone and precise subject terminology appropriate for ${className}.
 
 **MATHEMATICAL & SCIENTIFIC FORMATTING (CRITICAL):**
-1. **LATEX FOR ALL MATH:** Use professional LaTeX for ALL formulas, equations, variables ($x$), symbols (multiplication $\\times$, division $\\div$, plus/minus $\\pm$, etc.), and units ($kg \\cdot m/s^2$).
+1. **LATEX FOR ALL MATH:** Use professional LaTeX for ALL formulas, equations, variables ($x$), symbols (multiplication \\times, division \\div, plus/minus \\pm, etc.), and units ($kg \\cdot m/s^2$).
 2. **ESCAPING:** You MUST use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}) for all LaTeX commands within JSON strings.
 3. **PACKAGING:** Enclose all LaTeX content in single dollar signs: $...$.
 
@@ -134,81 +131,6 @@ Return only a valid JSON array of question objects.
     }
 };
 
-// Fix: Implemented and exported `generateChatResponseStream` to resolve the missing member error.
-export const generateChatResponseStream = async (
-    chat: Chat,
-    messageParts: Part[],
-    useSearch: boolean,
-    useThinking: boolean
-) => {
-    // If no special config is needed, use the efficient, history-aware method.
-    if (!useSearch && !useThinking) {
-        return chat.sendMessageStream({ message: messageParts });
-    }
-
-    // For dynamic configs (search/thinking), a one-off `generateContentStream` call is necessary.
-    // Note: This approach uses the chat history but doesn't automatically update the original Chat object state.
-    if (!process.env.API_KEY) throw new Error("API_KEY is not configured.");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-    const config: GenerateContentConfig = { systemInstruction };
-    let model = 'gemini-flash-lite-latest'; // Default model from chat
-
-    if (useSearch) {
-        // As per guidelines, googleSearch is a standalone tool and requires a compatible model.
-        config.tools = [{ googleSearch: {} }];
-        model = 'gemini-3-flash-preview';
-    } else {
-        // Retain the function calling tool for non-search queries.
-        config.tools = [{ functionDeclarations: [generatePaperFunctionDeclaration] }];
-    }
-
-    if (useThinking) {
-        // Using a safe budget for flash models.
-        config.thinkingConfig = { thinkingBudget: 24576 };
-    }
-
-    const contents = [...chat.history, { role: 'user', parts: messageParts }];
-
-    return ai.models.generateContentStream({
-        model,
-        contents,
-        config,
-    });
-};
-
-// Fix: Implemented and exported `generateTextToSpeech` to resolve the missing member error.
-export const generateTextToSpeech = async (text: string): Promise<string> => {
-    if (!process.env.API_KEY) throw new Error("API_KEY is not configured.");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-preview-tts",
-            contents: [{ parts: [{ text }] }],
-            config: {
-                responseModalities: [Modality.AUDIO],
-                speechConfig: {
-                    voiceConfig: {
-                        // Using a standard, pleasant voice.
-                        prebuiltVoiceConfig: { voiceName: 'Kore' },
-                    },
-                },
-            },
-        });
-
-        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-
-        if (!base64Audio) {
-            throw new Error("AI did not return any audio data.");
-        }
-        return base64Audio;
-    } catch (error) {
-        handleApiError(error, "generateTextToSpeech");
-        throw error;
-    }
-};
-
-
 export const generateImage = async (prompt: string, aspectRatio: string = '1:1'): Promise<string> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -267,4 +189,38 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
         config: { responseMimeType: "application/json" }
     });
     return parseAiJson(response.text as string) as AnalysisResult;
+};
+
+// Fix: Add and export generateChatResponseStream to resolve import error.
+export const generateChatResponseStream = async (chat: Chat, messageParts: Part[], useSearch: boolean, useThinking: boolean) => {
+    // NOTE: The current implementation of `chat.sendMessageStream` may not support overriding
+    // configuration like `tools` or `thinkingConfig` on a per-message basis.
+    // The `useSearch` and `useThinking` flags are ignored here to prevent breaking existing chat functionality. 
+    // To support this, a refactor to manually manage chat history with `generateContentStream` would be needed.
+    if (useSearch) {
+        console.warn("`useSearch` is not supported in this chat implementation and is being ignored.");
+    }
+    if (useThinking) {
+        console.warn("`useThinking` is not supported in this chat implementation and is being ignored.");
+    }
+    return chat.sendMessageStream({ message: messageParts });
+};
+
+// Fix: Add and export generateTextToSpeech to resolve import error.
+export const generateTextToSpeech = async (text: string): Promise<string> => {
+    if (!process.env.API_KEY) throw new Error("API key not found");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text }] }],
+        config: {
+            responseModalities: [Modality.AUDIO],
+        },
+    });
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!base64Audio) {
+        throw new Error("AI did not return audio data.");
+    }
+    return base64Audio;
 };

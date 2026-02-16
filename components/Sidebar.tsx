@@ -45,7 +45,6 @@ const NavItem: React.FC<{ icon: React.ReactNode; label: string; isActive: boolea
 const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onLogout, theme, toggleTheme }) => {
     const teacherLinks = [
         { page: 'teacherDashboard', label: 'Dashboard', icon: <DashboardIcon /> },
-        { page: 'chat', label: 'Chat Assistant', icon: <ChatIcon /> },
         { page: 'generate', label: 'Generate Paper', icon: <GenerateIcon /> },
         { page: 'gallery', label: 'My Uploads', icon: <GalleryIcon /> },
         { page: 'questionBank', label: 'Question Bank', icon: <QuestionBankIcon /> },
@@ -54,7 +53,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onLogo
 
     const studentLinks = [
         { page: 'studentDashboard', label: 'Dashboard', icon: <DashboardIcon /> },
-        { page: 'chat', label: 'Chat Assistant', icon: <ChatIcon /> },
         { page: 'gallery', label: 'My Uploads', icon: <GalleryIcon /> },
         { page: 'practice', label: 'Practice Test', icon: <PracticeIcon /> },
         { page: 'assignedPapers', label: 'Assigned Papers', icon: <AssignedIcon /> },

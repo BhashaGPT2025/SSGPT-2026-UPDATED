@@ -153,7 +153,6 @@ export interface TextBoxState {
   rotation: number;
 }
 
-// Fix: Add 'chat' to the Page type to resolve type errors and support the chat assistant feature.
 export type Page = 
   | 'creationHub' 
   | 'generate' 
@@ -169,15 +168,10 @@ export type Page =
   | 'attendedPapers'
   | 'gallery'
   | 'imageEditor'
+  // Fix: Add 'chat' to Page type to resolve type errors in AppLayout.tsx
   | 'chat';
   
 export type Theme = 'light' | 'dark';
-
-// Fix: Added VoiceOption interface to be used in voice-related components.
-export interface VoiceOption {
-    id: string;
-    name: string;
-}
 
 // --- Image Gallery & Editor Types ---
 
@@ -200,6 +194,12 @@ export interface UploadedImage {
     createdAt: number;
     updatedAt: number;
     tags: string[];
+}
+
+// Fix: Add VoiceOption type to resolve import error in ChatbotInterface.tsx
+export interface VoiceOption {
+    id: string;
+    name: string;
 }
 
 export interface EditorLayer {

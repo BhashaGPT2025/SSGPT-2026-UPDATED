@@ -1,7 +1,5 @@
 {
   "name": "SSGPT PRODUCTION AI",
   "description": "An advanced AI-powered question paper generator. Create, edit, and store high-quality exams in 100+ languages with pedagogical controls like difficulty and Bloom's Taxonomy levels.",
-  "requestFramePermissions": [
-    "microphone"
-  ]
+  "requestFramePermissions": []
 }
