@@ -180,8 +180,8 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                         const clonedEl = clonedDoc.querySelector('.paper-page') as HTMLElement;
                         if (clonedEl) {
                             clonedEl.style.fontFamily = state.styles.fontFamily;
-                            // Enforce line height in clone for export stability
-                            clonedEl.style.lineHeight = '2.0'; 
+                            // Do not force 2.0 line-height here as it breaks KaTeX fractions.
+                            // The line-height is handled by CSS in htmlGenerator (1.6 for text, 1.2 for KaTeX).
                         }
                     }
                 });
@@ -270,7 +270,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                                  padding: '60px',
                                  boxSizing: 'border-box',
                                  overflow: 'hidden',
-                                 lineHeight: '2.0' // Explicit line height
+                                 // Line height is controlled by inner CSS
                              }} 
                              dangerouslySetInnerHTML={{ __html: html }} 
                         />
