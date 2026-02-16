@@ -44,7 +44,7 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `Extract academic configuration from: "${transcript}". 
     Return JSON: {schoolName, className, subject, topics, difficulty, timeAllowed, questionDistribution: [{type, count, marks, taxonomy, difficulty}]}. 
-    Use LaTeX with double backslashes for any math.`;
+    Use standard LaTeX for any math.`;
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
@@ -72,12 +72,14 @@ You are a Senior Academic Examiner. Your task is to generate a high-quality, pro
 - Use formal academic tone and precise subject terminology appropriate for ${className}.
 
 **MATHEMATICAL & SCIENTIFIC FORMATTING (CRITICAL):**
-1. **LATEX FOR ALL MATH:** Use professional LaTeX for ALL formulas, equations, variables ($x$), symbols (multiplication $\\times$, division $\\div$, plus/minus $\\pm$, etc.), and units ($kg \\cdot m/s^2$).
-2. **ESCAPING:** You MUST use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}) for all LaTeX commands within JSON strings.
+1. **LATEX IS MANDATORY:** Use professional LaTeX for ALL math, even simple numbers in equations (e.g., $5 + 3$).
+2. **ESCAPING:** You MUST use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}, \\\\approx) for all LaTeX commands within JSON strings.
 3. **PACKAGING:** Enclose all LaTeX content in single dollar signs: $...$.
+4. **SIMPLICITY:** Use standard LaTeX commands. Avoid complex nesting or obscure packages. Use \\\\frac{}{} for fractions. Avoid \\\\dfrac if possible.
+5. **SPACING:** Do not add extra newlines or weird spacing inside the LaTeX strings.
 
 **QUESTION STRUCTURE RULES:**
-- **NO NUMBERING:** DO NOT include any numbering prefixes like "1.", "Q1", "a)", "(i)", "Column A:" inside the strings.
+- **NO NUMBERING:** DO NOT include any numbering prefixes like "1.", "Q1", "a)", "(i)", "Column A:" inside the strings. The UI handles numbering.
 - **Multiple Choice:** Return exactly 4 options as a plain array of strings.
 - **Match the Following:** Return an object for 'options': {"columnA": ["Item 1", "Item 2"...], "columnB": ["Match for 2", "Match for 1"...]}. Column B MUST be shuffled.
 - **Answer Key:** The "answer" field must contain a detailed model solution or the correct choice.

@@ -28,24 +28,24 @@ const toRoman = (num: number): string => {
 };
 
 const styles = {
-    root: `font-family: 'Times New Roman', Times, serif; color: #000; background: #fff; width: 100%; min-height: 100%; font-size: 12pt; line-height: 1.5;`,
+    root: `font-family: 'Times New Roman', serif; color: #000; background: #fff; width: 100%; min-height: 100%; font-size: 12pt; line-height: 1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact;`,
     questionBlock: `break-inside: avoid; page-break-inside: avoid; margin-bottom: 16px; width: 100%; position: relative; padding-bottom: 4px;`,
     questionTable: `width: 100%; border-collapse: collapse; margin-bottom: 8px;`,
-    questionNumberTd: `vertical-align: top; width: 35px; font-weight: 700; font-size: 1.1em; padding-top: 2px;`,
-    questionTextTd: `vertical-align: top; text-align: left; padding-right: 12px; padding-top: 2px;`,
-    marksTd: `vertical-align: top; text-align: right; width: 60px; font-weight: 600; font-size: 1em; padding-top: 2px;`,
+    questionNumberTd: `vertical-align: top; width: 35px; font-weight: 700; font-size: 1.1em; padding-top: 2px; color: #000;`,
+    questionTextTd: `vertical-align: top; text-align: left; padding-right: 12px; padding-top: 2px; color: #000;`,
+    marksTd: `vertical-align: top; text-align: right; width: 60px; font-weight: 600; font-size: 1em; padding-top: 2px; color: #000;`,
     optionGrid: `display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; padding-left: 35px;`,
-    optionItem: `break-inside: avoid; line-height: 1.6; display: flex; align-items: baseline; margin-left: 20px; margin-bottom: 4px;`,
+    optionItem: `break-inside: avoid; line-height: 1.4; display: flex; align-items: baseline; margin-left: 20px; margin-bottom: 4px; color: #000;`,
     matchTable: `width: 100%; border-collapse: collapse; margin-top: 12px; border: 1px solid #000;`,
-    matchTh: `padding: 8px; border: 1px solid #000; width: 50%; font-weight: 700; text-transform: uppercase; font-size: 0.9em; background-color: #f8fafc;`,
-    matchTd: `padding: 8px; border: 1px solid #000; width: 50%; vertical-align: middle; line-height: 1.6;`,
+    matchTh: `padding: 8px; border: 1px solid #000; width: 50%; font-weight: 700; text-transform: uppercase; font-size: 0.9em; background-color: #f8fafc; color: #000;`,
+    matchTd: `padding: 8px; border: 1px solid #000; width: 50%; vertical-align: middle; line-height: 1.4; color: #000;`,
     headerContainer: `text-align: center; width: 100%; margin-bottom: 24px; break-inside: avoid; border-bottom: 2px solid #000; padding-bottom: 12px;`,
-    headerSchool: `margin: 0; font-size: 24pt; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; line-height: 1.2; margin-bottom: 8px;`,
-    headerSub: `margin: 4px 0; font-size: 14pt; font-weight: 600;`,
-    metaTable: `width: 100%; margin-top: 12px; font-weight: 600; font-size: 1.1em; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 8px 0;`,
+    headerSchool: `margin: 0; font-size: 24pt; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; line-height: 1.2; margin-bottom: 8px; color: #000;`,
+    headerSub: `margin: 4px 0; font-size: 14pt; font-weight: 600; color: #000;`,
+    metaTable: `width: 100%; margin-top: 12px; font-weight: 600; font-size: 1.1em; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 8px 0; color: #000;`,
     sectionHeader: `text-align: center; margin: 24px 0 16px; break-inside: avoid; page-break-after: avoid;`,
-    sectionTitle: `font-weight: 800; text-transform: uppercase; font-size: 1.2em; border-bottom: 2px solid #000; display: inline-block; padding: 0 16px 4px;`,
-    sectionMeta: `display: flex; justify-content: space-between; border-bottom: 1px solid #cbd5e1; padding-bottom: 8px; margin-bottom: 16px; font-weight: 600; font-style: italic; color: #475569;`
+    sectionTitle: `font-weight: 800; text-transform: uppercase; font-size: 1.2em; border-bottom: 2px solid #000; display: inline-block; padding: 0 16px 4px; color: #000;`,
+    sectionMeta: `display: flex; justify-content: space-between; border-bottom: 1px solid #000; padding-bottom: 8px; margin-bottom: 16px; font-weight: 600; font-style: italic; color: #000;`
 };
 
 const renderOptions = (question: Question): string => {
@@ -96,8 +96,8 @@ const renderQuestion = (question: Question, isAnswerKey: boolean): string => {
     const optionsHtml = renderOptions(question);
     const answerHtml = isAnswerKey ? `
         <div style="margin-top: 8px; padding: 8px 12px; background-color: #f1f5f9; border-left: 4px solid #475569; font-size: 0.95em; break-inside: avoid;">
-            <strong style="color: #334155; text-transform: uppercase; font-size: 0.85em; display: block; margin-bottom: 2px;">Solution:</strong>
-            <div style="line-height: 1.6;">${formatText(typeof question.answer === 'string' ? question.answer : JSON.stringify(question.answer))}</div>
+            <strong style="color: #000; text-transform: uppercase; font-size: 0.85em; display: block; margin-bottom: 2px;">Solution:</strong>
+            <div style="line-height: 1.4; color: #000;">${formatText(typeof question.answer === 'string' ? question.answer : JSON.stringify(question.answer))}</div>
         </div>
     ` : '';
 
@@ -129,50 +129,60 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
     let sectionCount = 0;
     const isAnswerKey = options?.isAnswerKey ?? false;
 
-    // Optimized CSS for PDF Generation
+    // Strict CSS injection for proper math rendering in PDF exports
     let contentHtml = `
         <style>
-            /* Base Math Styles */
+            /* Base math styles - IMPORTANT for PDF export visibility */
             .katex { 
-                font-size: 1.2em; 
-                text-rendering: geometricPrecision; 
-                line-height: 1.2 !important;
+                font-size: 1.15em !important; 
+                line-height: 1.2 !important; 
+                text-rendering: geometricPrecision !important;
+                color: #000 !important;
             }
-            .katex-display { 
-                margin: 1em 0; 
-                overflow: visible; 
-            }
+            .katex-display { margin: 0.8em 0; overflow-x: auto; overflow-y: hidden; }
             
-            /* Fix Fraction Overlap & Visibility */
-            .katex .frac-line {
-                border-bottom-width: 1.5px !important; /* Make fraction bar thicker */
-                opacity: 1 !important;
-                background-color: black !important;
-                min-height: 1px !important;
-            }
-            
-            /* Improve spacing within fractions */
-            .katex .mfrac .vlist-t2 {
-                margin-right: 0.1em !important;
-            }
-            
-            /* Reset positioning contexts for export */
+            /* Export specific fixes */
             .katex, .MathJax, .math, .fraction {
-                white-space: nowrap !important;
-                display: inline-block !important;
+                line-height: 1.1 !important; /* Critical for fraction overlap */
                 vertical-align: middle !important;
+                display: inline-block !important;
+                transform: none !important;
+                white-space: nowrap !important;
+            }
+            
+            /* Fraction positioning fix - Thicker lines for visibility */
+            .katex .frac-line, .MathJax .mfrac {
+                position: relative !important;
+                top: 0 !important;
+                border-bottom-width: 1.5px !important;
+                opacity: 1 !important;
+                background-color: #000 !important;
+            }
+            
+            /* Prevent denominator overlap */
+            .katex .vlist-t2 {
+                margin-right: 0 !important;
             }
 
-            /* Container Spacing for Export */
+            /* Container spacing */
             .export-container {
-                line-height: 1.6 !important;
-                letter-spacing: 0.2px;
-                -webkit-font-smoothing: antialiased;
+                line-height: 1.5 !important;
+                letter-spacing: 0.1px;
+                color: #000 !important;
             }
             
-            /* Print Specific Overrides */
             @media print {
-                .katex { color: #000 !important; }
+                .katex, .MathJax, .math, .fraction {
+                    line-height: 1.1 !important;
+                    vertical-align: middle !important;
+                    display: inline-block !important;
+                    transform: none !important;
+                    color: #000 !important;
+                }
+                .katex .frac-line, .MathJax .mfrac {
+                    border-bottom-width: 2px !important;
+                    background-color: #000 !important;
+                }
             }
             
             img { max-width: 100%; height: auto; display: block; margin: 8px auto; }
@@ -188,7 +198,7 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
             ${logoAlignment === 'center' ? logoImgTag : ''}
             <h1 style="${styles.headerSchool}">${escapeHtml(paperData.schoolName)}</h1>
             <div style="${styles.headerSub}">${escapeHtml(paperData.subject)}${isAnswerKey ? ' - ANSWER KEY' : ''}</div>
-            <div style="font-size: 1.1em; font-weight: 500;">Class: ${escapeHtml(paperData.className)}</div>
+            <div style="font-size: 1.1em; font-weight: 500; color: #000;">Class: ${escapeHtml(paperData.className)}</div>
             
             <table style="${styles.metaTable}">
                 <tr>

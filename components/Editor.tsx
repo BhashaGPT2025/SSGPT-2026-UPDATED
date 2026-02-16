@@ -31,7 +31,8 @@ const triggerMathRendering = (element: HTMLElement | null): Promise<void> => {
                 ], 
                 throwOnError: false,
                 output: 'html', 
-                strict: false
+                strict: false,
+                trust: true
             });
         } catch (err) {
             console.error("KaTeX render error:", err);
@@ -131,7 +132,6 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         
         document.body.removeChild(container);
 
-        // Ensure we never return an empty array if content exists
         if (pages.length === 0 && htmlContent) {
             setPagesHtml([htmlContent]); 
         } else {
@@ -152,6 +152,10 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     const handleExportPDF = async () => {
         if (isExporting) return;
         setIsExporting(true);
+        
+        // Wait longer to ensure DOM is stable and fonts are loaded
+        await new Promise(resolve => setTimeout(resolve, 500));
+
         try {
             const pdf = new jsPDF('p', 'px', 'a4');
             const pdfW = pdf.internal.pageSize.getWidth();
@@ -168,19 +172,18 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 const el = pageElements[i] as HTMLElement;
                 
                 const canvas = await html2canvas(el, { 
-                    scale: 4, // High resolution scale for crisp text and lines
+                    scale: 3, // High scale for text quality, but not 4 to avoid crashing on large docs
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
                     allowTaint: true,
-                    scrollY: -window.scrollY, 
-                    windowWidth: document.documentElement.offsetWidth,
+                    // Critical for preventing layout shift during capture
+                    windowWidth: document.documentElement.offsetWidth, 
                     windowHeight: document.documentElement.offsetHeight,
                     onclone: (clonedDoc) => {
                         const clonedEl = clonedDoc.querySelector('.paper-page') as HTMLElement;
                         if (clonedEl) {
                             clonedEl.style.fontFamily = state.styles.fontFamily;
-                            // Inject specific export styles if needed, though mostly handled by CSS
                             const contentDiv = clonedEl.querySelector('.paper-page-content');
                             if (contentDiv) {
                                 contentDiv.classList.add('export-container');
@@ -189,7 +192,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                     }
                 });
                 
-                const imgData = canvas.toDataURL('image/png', 1.0); // Maximum quality
+                const imgData = canvas.toDataURL('image/png', 1.0);
                 if (i > 0) pdf.addPage();
                 
                 pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
@@ -232,7 +235,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center text-white">
                     <SpinnerIcon className="w-16 h-16 mb-6 text-indigo-400" />
                     <h2 className="text-2xl font-black tracking-tight">Finalizing PDF</h2>
-                    <p className="text-slate-400 mt-2 px-10 text-center">Rendering high-quality document...</p>
+                    <p className="text-slate-400 mt-2 px-10 text-center">Optimizing math rendering and layout quality...</p>
                 </div>
             )}
             <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
