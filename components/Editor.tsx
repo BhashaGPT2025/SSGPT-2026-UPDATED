@@ -38,7 +38,7 @@ const triggerMathRendering = (element: HTMLElement | null): Promise<void> => {
             console.error("KaTeX render error:", err);
         }
         // Increased wait time significantly to ensure complex fractions layout correctly before measurement
-        setTimeout(resolve, 800);
+        setTimeout(resolve, 1500);
     });
 };
 

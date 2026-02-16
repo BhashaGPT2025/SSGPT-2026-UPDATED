@@ -132,55 +132,80 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
     // Strict CSS injection for proper math rendering in PDF exports
     let contentHtml = `
         <style>
-            /* Base math styles - IMPORTANT for PDF export visibility */
+            /* Base math styles */
             .katex { 
                 font-size: 1.15em !important; 
                 line-height: 1.2 !important; 
                 text-rendering: geometricPrecision !important;
                 color: #000 !important;
+                white-space: nowrap !important;
             }
-            
-            /* GLOBAL KATEZ FIXES FOR PDF */
             .katex * {
                 color: #000 !important;
                 border-color: #000 !important;
             }
 
-            /* FRACTION RENDERING FIX */
-            /* Force the fraction bar to use background color instead of border to ensure visibility and position */
-            .katex .frac-line {
-                border: none !important;
-                border-bottom: none !important;
-                background-color: #000 !important;
-                height: 1.5px !important; /* Explicit height */
-                min-height: 1.5px !important;
-                width: 100% !important;
+            /* --- FRACTION LAYOUT FIX (FLEXBOX) --- */
+            /* 
+               Instead of absolute positioning, we use Flexbox to vertically stack
+               Numerator, Line, and Denominator. This is robust against export engine shifts.
+            */
+
+            /* Target the internal structure of fractions */
+            .katex .mfrac .vlist-t,
+            .katex .mfrac .vlist-t2,
+            .katex .mfrac .vlist {
+                display: flex !important;
+                flex-direction: column-reverse !important; /* Standard KaTeX DOM order is Denom -> Line -> Num, so reverse it */
+                align-items: center !important;
+                justify-content: center !important;
+                position: static !important;
+                height: auto !important;
+                width: auto !important;
+            }
+
+            /* Children: Numerator, Denominator, Line */
+            .katex .mfrac .vlist > span {
+                position: static !important;
+                top: auto !important;
+                bottom: auto !important;
+                left: auto !important;
                 display: block !important;
-                
-                /* Reset positioning to prevent "flying" bars in html2canvas */
+                height: auto !important;
+                margin: 0 !important;
+                padding: 1px 0 !important;
+                text-align: center !important;
                 transform: none !important;
-                
-                /* Adjust context */
-                opacity: 1 !important;
+                line-height: 1 !important;
+            }
+
+            /* Distinct style for the fraction line */
+            .katex .mfrac .frac-line {
+                width: 100% !important;
+                border-bottom: 2px solid #000 !important;
+                height: 0 !important;
+                min-height: 0 !important;
+                margin: 2px 0 !important; /* Gap */
+                background: transparent !important;
+                display: block !important;
                 visibility: visible !important;
             }
-            
-            /* Ensure the vlist container is positioned correctly relative to the line */
-            .katex .vlist {
-                position: relative !important;
+
+            /* Hide ghost elements (struts) that KaTeX uses for spacing */
+            .katex .mfrac .pstrut {
+                display: none !important;
             }
             
-            /* Ensure numerator and denominator spans are blocks so they stack properly with the block line */
-            .katex .vlist > span {
-                display: block !important;
-                text-align: center !important;
+            /* Ensure text is black and visible */
+            .katex .mord {
+                color: #000 !important;
             }
+
+            /* --------------------------------- */
 
             /* General Reset for Export */
             .katex, .MathJax, .math, .fraction {
-                line-height: normal !important; 
                 vertical-align: baseline !important;
-                white-space: nowrap !important;
             }
 
             /* Container spacing */
@@ -192,9 +217,9 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
             
             @media print {
                .katex .frac-line {
-                    background-color: #000 !important;
                     -webkit-print-color-adjust: exact;
                     print-color-adjust: exact;
+                    border-color: #000 !important;
                }
             }
             
