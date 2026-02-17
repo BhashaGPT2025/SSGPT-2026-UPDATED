@@ -25,6 +25,7 @@ const useResize = (
 
   const handleMouseDown = useCallback((e: React.MouseEvent, direction: string) => {
     if (!isSelected) return;
+    // Critical: Stop propagation so we don't select underlying text
     e.stopPropagation();
     e.preventDefault();
 
@@ -51,6 +52,8 @@ const useResize = (
 
     const handleMouseMove = (e: MouseEvent) => {
       e.preventDefault();
+      e.stopPropagation();
+      
       const { clientX, clientY } = e;
       const { startX, startY, startWidth, startHeight, startXPos, startYPos, direction } = interactionRef.current;
       const deltaX = clientX - startX;
@@ -65,7 +68,8 @@ const useResize = (
         newX = startXPos + deltaX;
         newY = startYPos + deltaY;
       } else {
-        // Resizing Logic
+        // Resizing Logic with aspect ratio preservation option could be added here
+        // For now, freeform resize
         if (direction.includes('e')) newWidth = Math.max(30, startWidth + deltaX);
         if (direction.includes('w')) {
           newWidth = Math.max(30, startWidth - deltaX);
@@ -112,14 +116,14 @@ const ResizeHandles: React.FC<{ onMouseDown: (e: React.MouseEvent, dir: string) 
         let cursor = 'default';
         let position = {};
         switch (dir) {
-          case 'nw': cursor = 'nwse-resize'; position = { top: -4, left: -4 }; break;
-          case 'n': cursor = 'ns-resize'; position = { top: -4, left: '50%', transform: 'translateX(-50%)' }; break;
-          case 'ne': cursor = 'nesw-resize'; position = { top: -4, right: -4 }; break;
-          case 'e': cursor = 'ew-resize'; position = { top: '50%', right: -4, transform: 'translateY(-50%)' }; break;
-          case 'se': cursor = 'nwse-resize'; position = { bottom: -4, right: -4 }; break;
-          case 's': cursor = 'ns-resize'; position = { bottom: -4, left: '50%', transform: 'translateX(-50%)' }; break;
-          case 'sw': cursor = 'nesw-resize'; position = { bottom: -4, left: -4 }; break;
-          case 'w': cursor = 'ew-resize'; position = { top: '50%', left: -4, transform: 'translateY(-50%)' }; break;
+          case 'nw': cursor = 'nwse-resize'; position = { top: -6, left: -6 }; break;
+          case 'n': cursor = 'ns-resize'; position = { top: -6, left: '50%', transform: 'translateX(-50%)' }; break;
+          case 'ne': cursor = 'nesw-resize'; position = { top: -6, right: -6 }; break;
+          case 'e': cursor = 'ew-resize'; position = { top: '50%', right: -6, transform: 'translateY(-50%)' }; break;
+          case 'se': cursor = 'nwse-resize'; position = { bottom: -6, right: -6 }; break;
+          case 's': cursor = 'ns-resize'; position = { bottom: -6, left: '50%', transform: 'translateX(-50%)' }; break;
+          case 'sw': cursor = 'nesw-resize'; position = { bottom: -6, left: -6 }; break;
+          case 'w': cursor = 'ew-resize'; position = { top: '50%', left: -6, transform: 'translateY(-50%)' }; break;
         }
 
         return (
@@ -127,7 +131,7 @@ const ResizeHandles: React.FC<{ onMouseDown: (e: React.MouseEvent, dir: string) 
             key={dir}
             onMouseDown={(e) => onMouseDown(e, dir)}
             style={{ ...position, cursor, position: 'absolute' }}
-            className="w-3 h-3 bg-blue-600 border-2 border-white rounded-full z-50 shadow-sm pointer-events-auto"
+            className="w-3 h-3 bg-white border-2 border-indigo-600 rounded-full z-50 shadow-sm pointer-events-auto hover:scale-125 transition-transform"
           />
         );
       })}
@@ -171,8 +175,9 @@ const EditableImage: React.FC<EditableImageProps> = ({
       const croppedBase64 = await getCroppedImg(imageState.src, croppedAreaPixels, rotation);
       onUpdateImage(imageState.id, {
         src: croppedBase64,
-        width: croppedAreaPixels.width,
-        height: croppedAreaPixels.height,
+        // Reset dimensions to match the new crop aspect ratio if desired, or keep current width/height box
+        // Often users want the box to remain same size but content cropped. 
+        // Here we'll just update content. 
       });
       setIsCropMode(false);
     } catch (e) {
@@ -188,7 +193,8 @@ const EditableImage: React.FC<EditableImageProps> = ({
     height: `${imageState.height}px`,
     transform: `rotate(${imageState.rotation}deg)`,
     zIndex: isSelected ? 50 : 20,
-    touchAction: 'none', // Prevent scrolling on mobile while dragging
+    touchAction: 'none', 
+    cursor: isDragging ? 'grabbing' : 'grab',
   };
 
   return (
@@ -201,7 +207,7 @@ const EditableImage: React.FC<EditableImageProps> = ({
                 handleMouseDown(e, 'move'); 
             }
         }}
-        className={`group ${isSelected ? 'ring-2 ring-blue-600' : 'hover:ring-1 hover:ring-blue-400'}`}
+        className={`group ${isSelected ? 'ring-2 ring-indigo-600' : 'hover:ring-1 hover:ring-indigo-400'}`}
       >
         <div className="relative w-full h-full">
           <img
@@ -218,16 +224,17 @@ const EditableImage: React.FC<EditableImageProps> = ({
 
           {/* Action Toolbar */}
           {isSelected && !isCropMode && !isResizing && !isDragging && (
-            <div className="absolute -top-10 right-0 flex gap-1 bg-white shadow-lg border border-slate-200 p-1 rounded-md z-50 pointer-events-auto">
+            <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex gap-1 bg-white shadow-xl border border-slate-200 p-1.5 rounded-lg z-50 pointer-events-auto">
               <button
-                className="p-1 hover:bg-slate-100 rounded text-slate-600"
+                className="p-1.5 hover:bg-slate-100 rounded text-slate-600"
                 onClick={(e) => { e.stopPropagation(); setIsCropMode(true); }}
                 title="Crop"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"></path><path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"></path></svg>
               </button>
+              <div className="w-px h-6 bg-slate-200 mx-1 self-center"></div>
               <button
-                className="p-1 hover:bg-red-100 rounded text-red-500"
+                className="p-1.5 hover:bg-red-50 rounded text-red-500"
                 onClick={(e) => { e.stopPropagation(); onDelete(); }}
                 title="Delete"
               >
@@ -239,8 +246,8 @@ const EditableImage: React.FC<EditableImageProps> = ({
       </div>
 
       {isCropMode && (
-        <div className="fixed inset-0 z-[100] bg-black/90 flex flex-col items-center justify-center p-4">
-          <div className="relative w-full max-w-4xl h-[60vh] bg-black border border-slate-700 rounded-xl overflow-hidden">
+        <div className="fixed inset-0 z-[100] bg-black/80 flex flex-col items-center justify-center p-4 backdrop-blur-sm" onMouseDown={e => e.stopPropagation()}>
+          <div className="relative w-full max-w-4xl h-[60vh] bg-black border border-slate-700 rounded-xl overflow-hidden shadow-2xl">
             <Cropper
               image={imageState.src}
               crop={crop}
@@ -253,18 +260,18 @@ const EditableImage: React.FC<EditableImageProps> = ({
               onCropComplete={onCropComplete}
             />
           </div>
-          <div className="flex items-center gap-4 mt-4 bg-white dark:bg-slate-800 p-4 rounded-xl">
-            <div className="flex flex-col">
-              <label className="text-xs font-bold text-slate-500">Zoom</label>
-              <input type="range" value={zoom} min={1} max={3} step={0.1} onChange={(e) => setZoom(Number(e.target.value))} className="w-32" />
+          <div className="flex items-center gap-6 mt-6 bg-white dark:bg-slate-800 p-6 rounded-xl shadow-xl border dark:border-slate-700">
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Zoom</label>
+              <input type="range" value={zoom} min={1} max={3} step={0.1} onChange={(e) => setZoom(Number(e.target.value))} className="w-32 accent-indigo-600" />
             </div>
-            <div className="flex flex-col">
-              <label className="text-xs font-bold text-slate-500">Rotation</label>
-              <input type="range" value={rotation} min={0} max={360} step={1} onChange={(e) => setRotation(Number(e.target.value))} className="w-32" />
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Rotation</label>
+              <input type="range" value={rotation} min={0} max={360} step={1} onChange={(e) => setRotation(Number(e.target.value))} className="w-32 accent-indigo-600" />
             </div>
-            <div className="w-px h-8 bg-slate-300 mx-2"></div>
-            <button onClick={() => setIsCropMode(false)} className="px-4 py-2 bg-slate-200 rounded-lg text-sm font-bold text-slate-700">Cancel</button>
-            <button onClick={handleConfirmCrop} className="px-4 py-2 bg-indigo-600 rounded-lg text-sm font-bold text-white">Apply</button>
+            <div className="w-px h-10 bg-slate-200 dark:bg-slate-600 mx-2"></div>
+            <button onClick={() => setIsCropMode(false)} className="px-5 py-2.5 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">Cancel</button>
+            <button onClick={handleConfirmCrop} className="px-5 py-2.5 bg-indigo-600 rounded-lg text-sm font-bold text-white hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-500/30">Apply Crop</button>
           </div>
         </div>
       )}

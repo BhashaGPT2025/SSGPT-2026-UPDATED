@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { type QuestionPaperData, type PaperStyles, type ImageState, type WatermarkState } from '../types';
@@ -13,6 +13,8 @@ import { useMathRenderer } from '../hooks/useMathRenderer';
 
 const A4_WIDTH_PX = 794; 
 const A4_HEIGHT_PX = 1123;
+// Padding 60px top/bottom + safety buffer
+const MAX_PAGE_HEIGHT = A4_HEIGHT_PX - 120 - 20; 
 
 const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: QuestionPaperData) => void; onSaveAndExit: () => void; onReady: () => void; }>((props, ref) => {
     const { paperData, onSave, onSaveAndExit, onReady } = props;
@@ -23,7 +25,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
     const [isExporting, setIsExporting] = useState(false);
     
-    // Configuration State (Should ideally come from props/parent, defaulted here for now)
+    // Configuration State
     const [watermark, setWatermark] = useState<WatermarkState>({
         type: 'none', color: 'rgba(0,0,0,0.1)', fontSize: 40, opacity: 0.2, rotation: -45
     });
@@ -43,14 +45,20 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         borderStyle: 'solid' 
     };
 
-    // Initial Pagination Logic
+    // Robust Pagination Logic
     useEffect(() => {
         const paginate = async () => {
+            // 1. Create a hidden staging container to render the full content
             const container = document.createElement('div');
             Object.assign(container.style, {
-                width: `${A4_WIDTH_PX}px`, position: 'absolute', left: '-9999px',
-                padding: '60px', boxSizing: 'border-box', backgroundColor: 'white',
-                fontFamily: styles.fontFamily
+                width: `${A4_WIDTH_PX}px`, 
+                position: 'absolute', 
+                left: '-9999px',
+                padding: '60px', // Match the editor padding
+                boxSizing: 'border-box', 
+                backgroundColor: 'white',
+                fontFamily: styles.fontFamily,
+                visibility: 'hidden'
             });
             container.className = 'prose max-w-none';
             
@@ -60,31 +68,57 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             container.innerHTML = htmlContent;
             document.body.appendChild(container);
 
-            // Wait for fonts?
+            // 2. Wait for fonts/images to be ready for accurate height calculation
             await document.fonts.ready;
+            // Small delay to ensure layout reflow is complete
+            await new Promise(resolve => setTimeout(resolve, 50)); 
             
             const contentRoot = container.querySelector('#paper-root');
-            const children = Array.from(contentRoot?.children || []);
+            if (!contentRoot) {
+                document.body.removeChild(container);
+                return;
+            }
+
+            const children = Array.from(contentRoot.children);
             const pages: string[] = [];
             let currentPageHtml = ""; 
             let currentHeight = 0;
-            const maxPageHeight = A4_HEIGHT_PX - 120; // Padding
 
-            children.forEach(child => {
-                const el = child as HTMLElement;
+            // 3. Iterate through blocks and distribute into pages
+            for (let i = 0; i < children.length; i++) {
+                const el = children[i] as HTMLElement;
+                
+                // Calculate total vertical space this element takes
                 const rect = el.getBoundingClientRect();
-                if (currentHeight + rect.height > maxPageHeight) { 
-                    pages.push(currentPageHtml); 
-                    currentPageHtml = ""; 
-                    currentHeight = 0; 
-                }
-                currentPageHtml += el.outerHTML; 
-                currentHeight += rect.height;
-            });
+                const style = window.getComputedStyle(el);
+                const marginTop = parseFloat(style.marginTop) || 0;
+                const marginBottom = parseFloat(style.marginBottom) || 0;
+                const elementTotalHeight = rect.height + marginTop + marginBottom;
 
+                // Check if adding this element overflows the page
+                if (currentHeight + elementTotalHeight > MAX_PAGE_HEIGHT) { 
+                    // If current page has content, push it
+                    if (currentPageHtml) {
+                        pages.push(currentPageHtml);
+                    }
+                    // Start new page with this element
+                    currentPageHtml = el.outerHTML; 
+                    currentHeight = elementTotalHeight; 
+                } else {
+                    // Fits in current page
+                    currentPageHtml += el.outerHTML; 
+                    currentHeight += elementTotalHeight;
+                }
+            }
+
+            // Push the final page
             if (currentPageHtml) pages.push(currentPageHtml);
+            
+            // Cleanup
             document.body.removeChild(container);
-            setPagesHtml(pages.length > 0 ? pages : [htmlContent]);
+            
+            // Update state
+            setPagesHtml(pages.length > 0 ? pages : [htmlContent]); // Fallback to raw content if empty
             onReady();
         };
         paginate();
@@ -102,7 +136,8 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
     const handleDrop = (e: React.DragEvent, pageIndex: number) => {
         e.preventDefault();
-        const files = Array.from(e.dataTransfer.files) as File[];
+        // Access files safely
+        const files = Array.from(e.dataTransfer.files);
         if (files.length === 0) return;
 
         const file = files[0];
@@ -115,18 +150,27 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         const reader = new FileReader();
         reader.onload = (event) => {
             const src = event.target?.result as string;
-            const newImage: ImageState = {
-                id: `img-${Date.now()}`,
-                src,
-                x: x - 100, // Center on mouse
-                y: y - 100,
-                width: 200,
-                height: 200, // Placeholder, usually wait for onload to get aspect ratio
-                pageIndex,
-                rotation: 0
+            // Pre-load image to get dimensions
+            const imgObj = new Image();
+            imgObj.onload = () => {
+                const aspectRatio = imgObj.width / imgObj.height;
+                const displayWidth = 200;
+                const displayHeight = displayWidth / aspectRatio;
+
+                const newImage: ImageState = {
+                    id: `img-${Date.now()}`,
+                    src,
+                    x: x - (displayWidth / 2), // Center on mouse
+                    y: y - (displayHeight / 2),
+                    width: displayWidth,
+                    height: displayHeight,
+                    pageIndex,
+                    rotation: 0
+                };
+                setImages(prev => [...prev, newImage]);
+                setSelectedImageId(newImage.id);
             };
-            setImages(prev => [...prev, newImage]);
-            setSelectedImageId(newImage.id);
+            imgObj.src = src;
         };
         reader.readAsDataURL(file);
     };
@@ -137,12 +181,21 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         const reader = new FileReader();
         reader.onload = (ev) => {
             const src = ev.target?.result as string;
-            const newImage: ImageState = {
-                id: `img-${Date.now()}`,
-                src,
-                x: 100, y: 100, width: 200, height: 200, pageIndex: 0, rotation: 0
+            const imgObj = new Image();
+            imgObj.onload = () => {
+                const aspectRatio = imgObj.width / imgObj.height;
+                const newImage: ImageState = {
+                    id: `img-${Date.now()}`,
+                    src,
+                    x: 100, y: 100, 
+                    width: 200, 
+                    height: 200 / aspectRatio, 
+                    pageIndex: 0, 
+                    rotation: 0
+                };
+                setImages(prev => [...prev, newImage]);
             };
-            setImages(prev => [...prev, newImage]);
+            imgObj.src = src;
         };
         reader.readAsDataURL(file);
         e.target.value = '';
@@ -162,8 +215,12 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             if (pageElements) {
                 for (let i = 0; i < pageElements.length; i++) {
                     const el = pageElements[i] as HTMLElement;
+                    // High scale for better quality
                     const canvas = await html2canvas(el, { 
-                        scale: 2, useCORS: true, backgroundColor: '#ffffff' 
+                        scale: 2, 
+                        useCORS: true, 
+                        backgroundColor: '#ffffff',
+                        logging: false
                     });
                     const imgData = canvas.toDataURL('image/png');
                     if (i > 0) pdf.addPage();
@@ -173,7 +230,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             pdf.save(`${paperData.subject.replace(/\s+/g, '_')}_Paper.pdf`);
         } catch (error) {
             console.error(error);
-            alert("Export Failed");
+            alert("Export Failed: " + (error as any).message);
         } finally {
             setIsExporting(false);
         }
@@ -184,7 +241,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         openExportModal: handleExportPDF,
         openAnswerKeyModal: () => {},
         paperSubject: paperData.subject,
-        setWatermarkConfig: setWatermark, // Expose setter for parent toolbar
+        setWatermarkConfig: setWatermark, 
         isSaving: false
     }));
 
@@ -195,25 +252,36 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             {isExporting && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex flex-col items-center justify-center text-white">
                     <SpinnerIcon className="w-16 h-16 mb-4 text-indigo-400" />
-                    <h2>Generating PDF...</h2>
+                    <h2>Generating PDF... Please wait.</h2>
                 </div>
             )}
 
-            <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="fixed top-24 right-8 z-50 flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-indigo-700 transition-all font-semibold text-sm hover:scale-105"
-            >
-                <UploadIcon className="w-4 h-4" /> Add Image
-            </button>
+            {!isExporting && (
+                <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="fixed top-24 right-8 z-50 flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-indigo-700 transition-all font-semibold text-sm hover:scale-105"
+                >
+                    <UploadIcon className="w-4 h-4" /> Add Image
+                </button>
+            )}
 
             <RichTextToolbar editorRef={pagesContainerRef} isExporting={isExporting} />
 
-            <main className="flex-1 overflow-auto p-8 bg-slate-300 dark:bg-slate-950/20" ref={pagesContainerRef} onClick={() => setSelectedImageId(null)}>
+            <main 
+                className="flex-1 overflow-auto p-8 bg-slate-300 dark:bg-slate-950/20" 
+                ref={pagesContainerRef} 
+                onClick={() => setSelectedImageId(null)}
+            >
                 {pagesHtml.map((html, i) => (
                     <div 
                         key={i} 
                         className="paper-page bg-white shadow-2xl mx-auto mb-10 relative print:shadow-none print:mb-0 group" 
-                        style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX, position: 'relative', overflow: 'hidden' }}
+                        style={{ 
+                            width: A4_WIDTH_PX, 
+                            height: A4_HEIGHT_PX, 
+                            position: 'relative', 
+                            overflow: 'hidden' // Critical for clipping content
+                        }}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => handleDrop(e, i)}
                     >
@@ -246,14 +314,18 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                             />
                         ))}
 
-                        <div className="absolute bottom-4 right-8 text-xs text-slate-300 pointer-events-none select-none z-0">
+                        {/* Page Number */}
+                        <div className="absolute bottom-4 right-8 text-xs text-slate-300 pointer-events-none select-none z-20">
                             Page {i + 1}
                         </div>
                     </div>
                 ))}
                 
                 {pagesHtml.length === 0 && (
-                    <div className="text-center text-slate-500 mt-20">Loading content...</div>
+                    <div className="flex flex-col items-center justify-center mt-20 text-slate-500">
+                        <SpinnerIcon className="w-8 h-8 mb-2" />
+                        <p>Formatting paper...</p>
+                    </div>
                 )}
             </main>
         </div>
