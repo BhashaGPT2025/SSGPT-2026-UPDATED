@@ -17,8 +17,7 @@
     "html-to-docx": "^1.8.0",
     "firebase": "^12.5.0",
     "react-cropper": "^2.3.3",
-    "cropperjs": "^1.6.1",
-    "react-easy-crop": "^5.2.0"
+    "cropperjs": "^1.6.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
