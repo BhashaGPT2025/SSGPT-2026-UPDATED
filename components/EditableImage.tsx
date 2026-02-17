@@ -2,10 +2,140 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import Cropper from 'react-easy-crop';
 import { getCroppedImg } from '../utils/canvasUtils';
-import ImageResizer from './ImageResizer';
 import { ImageState } from '../types';
 import { Area } from 'react-easy-crop/types';
 
+// --- Custom Hook for Resizing & Moving ---
+const useResize = (
+  imageState: ImageState,
+  onUpdate: (id: string, updates: Partial<ImageState>) => void,
+  isSelected: boolean
+) => {
+  const [isResizing, setIsResizing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const interactionRef = useRef({
+    startX: 0,
+    startY: 0,
+    startWidth: 0,
+    startHeight: 0,
+    startXPos: 0,
+    startYPos: 0,
+    direction: '',
+  });
+
+  const handleMouseDown = useCallback((e: React.MouseEvent, direction: string) => {
+    if (!isSelected) return;
+    e.stopPropagation();
+    e.preventDefault();
+
+    const { clientX, clientY } = e;
+    interactionRef.current = {
+      startX: clientX,
+      startY: clientY,
+      startWidth: imageState.width,
+      startHeight: imageState.height,
+      startXPos: imageState.x,
+      startYPos: imageState.y,
+      direction,
+    };
+
+    if (direction === 'move') {
+      setIsDragging(true);
+    } else {
+      setIsResizing(true);
+    }
+  }, [isSelected, imageState]);
+
+  useEffect(() => {
+    if (!isResizing && !isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      e.preventDefault();
+      const { clientX, clientY } = e;
+      const { startX, startY, startWidth, startHeight, startXPos, startYPos, direction } = interactionRef.current;
+      const deltaX = clientX - startX;
+      const deltaY = clientY - startY;
+
+      let newWidth = startWidth;
+      let newHeight = startHeight;
+      let newX = startXPos;
+      let newY = startYPos;
+
+      if (direction === 'move') {
+        newX = startXPos + deltaX;
+        newY = startYPos + deltaY;
+      } else {
+        // Resizing Logic
+        if (direction.includes('e')) newWidth = Math.max(30, startWidth + deltaX);
+        if (direction.includes('w')) {
+          newWidth = Math.max(30, startWidth - deltaX);
+          newX = startXPos + (startWidth - newWidth);
+        }
+        if (direction.includes('s')) newHeight = Math.max(30, startHeight + deltaY);
+        if (direction.includes('n')) {
+          newHeight = Math.max(30, startHeight - deltaY);
+          newY = startYPos + (startHeight - newHeight);
+        }
+      }
+
+      onUpdate(imageState.id, {
+        x: newX,
+        y: newY,
+        width: newWidth,
+        height: newHeight,
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      setIsDragging(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, isDragging, imageState.id, onUpdate]);
+
+  return { handleMouseDown, isResizing, isDragging };
+};
+
+// --- Resize Handles UI ---
+const ResizeHandles: React.FC<{ onMouseDown: (e: React.MouseEvent, dir: string) => void }> = ({ onMouseDown }) => {
+  const handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+  return (
+    <>
+      {handles.map((dir) => {
+        let cursor = 'default';
+        let position = {};
+        switch (dir) {
+          case 'nw': cursor = 'nwse-resize'; position = { top: -4, left: -4 }; break;
+          case 'n': cursor = 'ns-resize'; position = { top: -4, left: '50%', transform: 'translateX(-50%)' }; break;
+          case 'ne': cursor = 'nesw-resize'; position = { top: -4, right: -4 }; break;
+          case 'e': cursor = 'ew-resize'; position = { top: '50%', right: -4, transform: 'translateY(-50%)' }; break;
+          case 'se': cursor = 'nwse-resize'; position = { bottom: -4, right: -4 }; break;
+          case 's': cursor = 'ns-resize'; position = { bottom: -4, left: '50%', transform: 'translateX(-50%)' }; break;
+          case 'sw': cursor = 'nesw-resize'; position = { bottom: -4, left: -4 }; break;
+          case 'w': cursor = 'ew-resize'; position = { top: '50%', left: -4, transform: 'translateY(-50%)' }; break;
+        }
+
+        return (
+          <div
+            key={dir}
+            onMouseDown={(e) => onMouseDown(e, dir)}
+            style={{ ...position, cursor, position: 'absolute' }}
+            className="w-3 h-3 bg-blue-600 border-2 border-white rounded-full z-50 shadow-sm pointer-events-auto"
+          />
+        );
+      })}
+    </>
+  );
+};
+
+// --- Main Component ---
 interface EditableImageProps {
   imageState: ImageState;
   isSelected: boolean;
@@ -26,46 +156,9 @@ const EditableImage: React.FC<EditableImageProps> = ({
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
-  
-  const isDraggingRef = useRef(false);
-  const dragStartRef = useRef({ x: 0, y: 0 });
 
-  // -- Dragging Logic --
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (isCropMode) return;
-    e.stopPropagation();
-    e.preventDefault();
-    onSelect();
-    isDraggingRef.current = true;
-    dragStartRef.current = { x: e.clientX, y: e.clientY };
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current || isCropMode) return;
-      const deltaX = e.clientX - dragStartRef.current.x;
-      const deltaY = e.clientY - dragStartRef.current.y;
-      
-      onUpdateImage(imageState.id, {
-        x: imageState.x + deltaX,
-        y: imageState.y + deltaY,
-      });
-      
-      dragStartRef.current = { x: e.clientX, y: e.clientY };
-    };
-
-    const handleMouseUp = () => {
-      isDraggingRef.current = false;
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isCropMode, imageState, onUpdateImage]);
-
+  // Use Custom Hook for Move/Resize
+  const { handleMouseDown, isResizing, isDragging } = useResize(imageState, onUpdateImage, isSelected && !isCropMode);
 
   // -- Crop Logic --
   const onCropComplete = useCallback((_croppedArea: Area, croppedAreaPixels: Area) => {
@@ -95,44 +188,54 @@ const EditableImage: React.FC<EditableImageProps> = ({
     height: `${imageState.height}px`,
     transform: `rotate(${imageState.rotation}deg)`,
     zIndex: isSelected ? 50 : 20,
-    cursor: isCropMode ? 'default' : 'move',
+    touchAction: 'none', // Prevent scrolling on mobile while dragging
   };
 
   return (
     <>
-      <div style={style} onMouseDown={handleMouseDown}>
-        <ImageResizer
-          imageState={imageState}
-          isSelected={isSelected && !isCropMode}
-          onUpdate={(updates) => onUpdateImage(imageState.id, updates)}
-        >
-          <div className="relative w-full h-full group">
-            <img
-              src={imageState.src}
-              alt="asset"
-              className="w-full h-full object-fill pointer-events-none select-none"
-              draggable={false}
-            />
-            {isSelected && !isCropMode && (
-              <div className="absolute -top-10 right-0 flex gap-1 bg-white shadow-lg border border-slate-200 p-1 rounded-md z-50">
-                <button
-                  className="p-1 hover:bg-slate-100 rounded text-slate-600"
-                  onMouseDown={(e) => { e.stopPropagation(); setIsCropMode(true); }}
-                  title="Crop"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"></path><path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"></path></svg>
-                </button>
-                <button
-                  className="p-1 hover:bg-red-100 rounded text-red-500"
-                  onMouseDown={(e) => { e.stopPropagation(); onDelete(); }}
-                  title="Delete"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                </button>
-              </div>
-            )}
-          </div>
-        </ImageResizer>
+      <div 
+        style={style} 
+        onMouseDown={(e) => {
+            if(!isCropMode) {
+                onSelect();
+                handleMouseDown(e, 'move'); 
+            }
+        }}
+        className={`group ${isSelected ? 'ring-2 ring-blue-600' : 'hover:ring-1 hover:ring-blue-400'}`}
+      >
+        <div className="relative w-full h-full">
+          <img
+            src={imageState.src}
+            alt="asset"
+            className="w-full h-full object-fill select-none pointer-events-none" 
+            draggable={false}
+          />
+          
+          {/* Resize Handles */}
+          {isSelected && !isCropMode && (
+            <ResizeHandles onMouseDown={handleMouseDown} />
+          )}
+
+          {/* Action Toolbar */}
+          {isSelected && !isCropMode && !isResizing && !isDragging && (
+            <div className="absolute -top-10 right-0 flex gap-1 bg-white shadow-lg border border-slate-200 p-1 rounded-md z-50 pointer-events-auto">
+              <button
+                className="p-1 hover:bg-slate-100 rounded text-slate-600"
+                onClick={(e) => { e.stopPropagation(); setIsCropMode(true); }}
+                title="Crop"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"></path><path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"></path></svg>
+              </button>
+              <button
+                className="p-1 hover:bg-red-100 rounded text-red-500"
+                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                title="Delete"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {isCropMode && (
