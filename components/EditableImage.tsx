@@ -25,9 +25,8 @@ const useResize = (
 
   const handleMouseDown = useCallback((e: React.MouseEvent, direction: string) => {
     if (!isSelected) return;
-    // Critical: Stop propagation so we don't select underlying text
-    e.stopPropagation();
-    e.preventDefault();
+    e.stopPropagation(); // Critical: Stop event from bubbling to parent
+    e.preventDefault(); // Prevent default browser drag behavior
 
     const { clientX, clientY } = e;
     interactionRef.current = {
@@ -68,8 +67,6 @@ const useResize = (
         newX = startXPos + deltaX;
         newY = startYPos + deltaY;
       } else {
-        // Resizing Logic with aspect ratio preservation option could be added here
-        // For now, freeform resize
         if (direction.includes('e')) newWidth = Math.max(30, startWidth + deltaX);
         if (direction.includes('w')) {
           newWidth = Math.max(30, startWidth - deltaX);
@@ -175,9 +172,6 @@ const EditableImage: React.FC<EditableImageProps> = ({
       const croppedBase64 = await getCroppedImg(imageState.src, croppedAreaPixels, rotation);
       onUpdateImage(imageState.id, {
         src: croppedBase64,
-        // Reset dimensions to match the new crop aspect ratio if desired, or keep current width/height box
-        // Often users want the box to remain same size but content cropped. 
-        // Here we'll just update content. 
       });
       setIsCropMode(false);
     } catch (e) {
@@ -195,12 +189,19 @@ const EditableImage: React.FC<EditableImageProps> = ({
     zIndex: isSelected ? 50 : 20,
     touchAction: 'none', 
     cursor: isDragging ? 'grabbing' : 'grab',
+    pointerEvents: 'auto', // Ensure the container captures events
   };
 
   return (
     <>
       <div 
         style={style} 
+        onClick={(e) => {
+            e.stopPropagation(); // Prevent deselection
+            if(!isSelected && !isCropMode) {
+                onSelect();
+            }
+        }}
         onMouseDown={(e) => {
             if(!isCropMode) {
                 onSelect();
@@ -224,7 +225,7 @@ const EditableImage: React.FC<EditableImageProps> = ({
 
           {/* Action Toolbar */}
           {isSelected && !isCropMode && !isResizing && !isDragging && (
-            <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex gap-1 bg-white shadow-xl border border-slate-200 p-1.5 rounded-lg z-50 pointer-events-auto">
+            <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex gap-1 bg-white shadow-xl border border-slate-200 p-1.5 rounded-lg z-50 pointer-events-auto" onMouseDown={e => e.stopPropagation()}>
               <button
                 className="p-1.5 hover:bg-slate-100 rounded text-slate-600"
                 onClick={(e) => { e.stopPropagation(); setIsCropMode(true); }}
