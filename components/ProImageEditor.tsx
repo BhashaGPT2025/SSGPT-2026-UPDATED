@@ -6,6 +6,8 @@ import { SaveIcon } from './icons/SaveIcon';
 import { LayerIcon } from './icons/LayerIcon';
 import { CropIcon } from './icons/CropIcon';
 import { SliderIcon } from './icons/SliderIcon';
+import Cropper from "react-cropper";
+import "cropperjs/dist/cropper.css";
 
 interface ProImageEditorProps {
     image: UploadedImage | null;
@@ -24,6 +26,7 @@ const loadImage = (src: string): Promise<HTMLImageElement> => {
 export const ProImageEditor: React.FC<ProImageEditorProps> = ({ image, onClose }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const cropperRef = useRef<HTMLImageElement>(null);
     
     const [editorState, setEditorState] = useState<EditorState>({
         canvasWidth: 800,
@@ -38,6 +41,11 @@ export const ProImageEditor: React.FC<ProImageEditorProps> = ({ image, onClose }
     const [showLayers, setShowLayers] = useState(true);
     const [activeTool, setActiveTool] = useState<'move' | 'crop' | 'filter'>('move');
     const [isRendering, setIsRendering] = useState(false);
+    
+    // Cropper State
+    const [isCropping, setIsCropping] = useState(false);
+    const [cropper, setCropper] = useState<any>();
+    const [croppingLayer, setCroppingLayer] = useState<EditorLayer | null>(null);
 
     // Init
     useEffect(() => {
@@ -49,7 +57,7 @@ export const ProImageEditor: React.FC<ProImageEditorProps> = ({ image, onClose }
                     type: 'image',
                     name: 'Background',
                     visible: true,
-                    locked: true,
+                    locked: false,
                     x: 0,
                     y: 0,
                     width: image.width || 800,
@@ -122,7 +130,7 @@ export const ProImageEditor: React.FC<ProImageEditorProps> = ({ image, onClose }
                 }
 
                 // Selection Box
-                if (editorState.selectedLayerId === layer.id) {
+                if (editorState.selectedLayerId === layer.id && !isCropping) {
                     ctx.strokeStyle = '#6366f1'; // Indigo-500
                     ctx.lineWidth = 2 / editorState.zoom; // Keep line width consistent
                     ctx.strokeRect(layer.x, layer.y, layer.width, layer.height);
@@ -139,13 +147,45 @@ export const ProImageEditor: React.FC<ProImageEditorProps> = ({ image, onClose }
         };
 
         requestAnimationFrame(() => render());
-    }, [editorState]);
+    }, [editorState, isCropping]);
 
     const handleUpdateLayer = (id: string, updates: Partial<EditorLayer>) => {
         setEditorState(prev => ({
             ...prev,
             layers: prev.layers.map(l => l.id === id ? { ...l, ...updates } : l)
         }));
+    };
+
+    const startCropping = () => {
+        const layer = editorState.layers.find(l => l.id === editorState.selectedLayerId);
+        if (layer && layer.type === 'image' && layer.src) {
+            setCroppingLayer(layer);
+            setIsCropping(true);
+            setActiveTool('crop');
+        }
+    };
+
+    const handleCropConfirm = () => {
+        if (typeof cropper !== "undefined" && croppingLayer) {
+            const croppedDataUrl = cropper.getCroppedCanvas().toDataURL();
+            
+            // Get new dimensions
+            const img = new Image();
+            img.onload = () => {
+                handleUpdateLayer(croppingLayer.id, { 
+                    src: croppedDataUrl,
+                    width: img.width,
+                    height: img.height,
+                    // Reset rotation as crop handles it visually, or keep logic consistent
+                    // Usually cropper output is the rectified image, so we might want to reset layer rotation if cropper handled it
+                    // For now, we assume simple crop
+                });
+                setIsCropping(false);
+                setCroppingLayer(null);
+                setActiveTool('move');
+            };
+            img.src = croppedDataUrl;
+        }
     };
 
     if (!image) return null;
@@ -159,20 +199,23 @@ export const ProImageEditor: React.FC<ProImageEditorProps> = ({ image, onClose }
                     <div className="h-6 w-px bg-slate-700 mx-2" />
                     <div className="flex bg-slate-800 rounded-lg p-1 gap-1">
                         <button 
-                            onClick={() => setActiveTool('move')}
+                            onClick={() => { setActiveTool('move'); setIsCropping(false); }}
                             className={`p-2 rounded-md transition-colors ${activeTool === 'move' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'}`}
+                            title="Move Tool"
                         >
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" /></svg>
                         </button>
                          <button 
-                            onClick={() => setActiveTool('crop')}
+                            onClick={startCropping}
                             className={`p-2 rounded-md transition-colors ${activeTool === 'crop' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'}`}
+                            title="Crop Tool (Double click image)"
                         >
                             <CropIcon className="w-5 h-5" />
                         </button>
                         <button 
                             onClick={() => setActiveTool('filter')}
                             className={`p-2 rounded-md transition-colors ${activeTool === 'filter' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-700 text-slate-400'}`}
+                            title="Filters"
                         >
                             <SliderIcon className="w-5 h-5" />
                         </button>
@@ -180,13 +223,30 @@ export const ProImageEditor: React.FC<ProImageEditorProps> = ({ image, onClose }
                 </div>
                 
                 <div className="flex items-center gap-4">
-                    <span className="text-slate-500 text-sm">{Math.round(editorState.zoom * 100)}%</span>
-                    <AnimatedButton 
-                        icon={<SaveIcon className="w-5 h-5" />} 
-                        label="Export" 
-                        onClick={() => alert("Export logic would go here (canvas.toDataURL)")}
-                        variant="success"
-                    />
+                    {!isCropping ? (
+                        <>
+                            <span className="text-slate-500 text-sm">{Math.round(editorState.zoom * 100)}%</span>
+                            <AnimatedButton 
+                                icon={<SaveIcon className="w-5 h-5" />} 
+                                label="Export" 
+                                onClick={() => {
+                                    if(canvasRef.current) {
+                                        const url = canvasRef.current.toDataURL();
+                                        const link = document.createElement('a');
+                                        link.download = 'edited-image.png';
+                                        link.href = url;
+                                        link.click();
+                                    }
+                                }}
+                                variant="success"
+                            />
+                        </>
+                    ) : (
+                        <>
+                            <button onClick={() => { setIsCropping(false); setActiveTool('move'); }} className="px-4 py-2 rounded-lg bg-slate-700 text-white font-semibold hover:bg-slate-600">Cancel</button>
+                            <button onClick={handleCropConfirm} className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700">Apply Crop</button>
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -197,98 +257,120 @@ export const ProImageEditor: React.FC<ProImageEditorProps> = ({ image, onClose }
                     ref={containerRef}
                     className="flex-1 bg-slate-900 overflow-auto flex items-center justify-center p-10 relative"
                     onWheel={(e) => {
-                        if (e.ctrlKey) {
+                        if (e.ctrlKey && !isCropping) {
                             e.preventDefault();
                             setEditorState(s => ({...s, zoom: Math.min(Math.max(0.1, s.zoom - e.deltaY * 0.001), 5) }));
                         }
                     }}
                 >
-                    <div 
-                        className="shadow-2xl shadow-black relative transition-transform duration-75 ease-out"
-                        style={{ 
-                            width: editorState.canvasWidth, 
-                            height: editorState.canvasHeight,
-                            transform: `scale(${editorState.zoom})`,
-                            transformOrigin: 'center'
-                        }}
-                    >
-                        <canvas 
-                            ref={canvasRef}
-                            width={editorState.canvasWidth} 
-                            height={editorState.canvasHeight}
-                            className="block"
-                        />
-                    </div>
+                    {isCropping && croppingLayer ? (
+                        <div className="z-50 shadow-2xl">
+                            <Cropper
+                                style={{ height: '70vh', width: '100%' }}
+                                initialAspectRatio={NaN}
+                                src={croppingLayer.src}
+                                viewMode={1}
+                                minCropBoxHeight={10}
+                                minCropBoxWidth={10}
+                                background={false}
+                                responsive={true}
+                                autoCropArea={1}
+                                checkOrientation={false}
+                                onInitialized={(instance) => setCropper(instance)}
+                                guides={true}
+                            />
+                        </div>
+                    ) : (
+                        <div 
+                            className="shadow-2xl shadow-black relative transition-transform duration-75 ease-out"
+                            style={{ 
+                                width: editorState.canvasWidth, 
+                                height: editorState.canvasHeight,
+                                transform: `scale(${editorState.zoom})`,
+                                transformOrigin: 'center'
+                            }}
+                            onDoubleClick={startCropping}
+                        >
+                            <canvas 
+                                ref={canvasRef}
+                                width={editorState.canvasWidth} 
+                                height={editorState.canvasHeight}
+                                className="block bg-[#1e293b] cursor-crosshair"
+                            />
+                        </div>
+                    )}
                 </div>
 
                 {/* Right Sidebar (Layers & Props) */}
-                <div className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col z-10">
-                    {/* Panel Header */}
-                    <div className="p-4 border-b border-slate-800 flex justify-between items-center">
-                        <h3 className="font-bold text-sm uppercase tracking-wider text-slate-400">Layers</h3>
-                        <button onClick={() => setShowLayers(!showLayers)} className="text-slate-400 hover:text-white">
-                            <LayerIcon className="w-5 h-5" />
-                        </button>
-                    </div>
-
-                    {/* Layers List */}
-                    {showLayers && (
-                        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                            {[...editorState.layers].reverse().map(layer => (
-                                <div 
-                                    key={layer.id}
-                                    onClick={() => setEditorState(s => ({...s, selectedLayerId: layer.id}))}
-                                    className={`
-                                        p-3 rounded-lg flex items-center gap-3 cursor-pointer transition-all
-                                        ${editorState.selectedLayerId === layer.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'hover:bg-slate-800 text-slate-300'}
-                                    `}
-                                >
-                                    <div className="w-4 h-4 rounded-sm border border-current opacity-50" />
-                                    <span className="text-sm font-medium truncate flex-1">{layer.name}</span>
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); handleUpdateLayer(layer.id, { visible: !layer.visible }) }}
-                                        className={`text-xs opacity-50 hover:opacity-100`}
-                                    >
-                                        {layer.visible ? '👁️' : '🚫'}
-                                    </button>
-                                </div>
-                            ))}
+                {!isCropping && (
+                    <div className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col z-10">
+                        {/* Panel Header */}
+                        <div className="p-4 border-b border-slate-800 flex justify-between items-center">
+                            <h3 className="font-bold text-sm uppercase tracking-wider text-slate-400">Layers</h3>
+                            <button onClick={() => setShowLayers(!showLayers)} className="text-slate-400 hover:text-white">
+                                <LayerIcon className="w-5 h-5" />
+                            </button>
                         </div>
-                    )}
-                    
-                    {/* Properties Panel */}
-                    <div className="border-t border-slate-800 p-4 bg-slate-800/30">
-                        <h4 className="text-xs font-bold text-slate-500 mb-3 uppercase">Adjustments</h4>
-                        {editorState.selectedLayerId ? (
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="text-xs text-slate-400 flex justify-between mb-1">
-                                        Opacity <span>{Math.round((editorState.layers.find(l=>l.id===editorState.selectedLayerId)?.opacity || 1)*100)}%</span>
-                                    </label>
-                                    <input 
-                                        type="range" min="0" max="1" step="0.01"
-                                        value={editorState.layers.find(l=>l.id===editorState.selectedLayerId)?.opacity || 1}
-                                        onChange={(e) => handleUpdateLayer(editorState.selectedLayerId!, { opacity: parseFloat(e.target.value) })}
-                                        className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-slate-400 flex justify-between mb-1">
-                                        Rotation <span>{Math.round(editorState.layers.find(l=>l.id===editorState.selectedLayerId)?.rotation || 0)}°</span>
-                                    </label>
-                                    <input 
-                                        type="range" min="-180" max="180" step="1"
-                                        value={editorState.layers.find(l=>l.id===editorState.selectedLayerId)?.rotation || 0}
-                                        onChange={(e) => handleUpdateLayer(editorState.selectedLayerId!, { rotation: parseInt(e.target.value) })}
-                                        className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                                    />
-                                </div>
+
+                        {/* Layers List */}
+                        {showLayers && (
+                            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                                {[...editorState.layers].reverse().map(layer => (
+                                    <div 
+                                        key={layer.id}
+                                        onClick={() => setEditorState(s => ({...s, selectedLayerId: layer.id}))}
+                                        className={`
+                                            p-3 rounded-lg flex items-center gap-3 cursor-pointer transition-all
+                                            ${editorState.selectedLayerId === layer.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'hover:bg-slate-800 text-slate-300'}
+                                        `}
+                                    >
+                                        <div className="w-4 h-4 rounded-sm border border-current opacity-50" />
+                                        <span className="text-sm font-medium truncate flex-1">{layer.name}</span>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); handleUpdateLayer(layer.id, { visible: !layer.visible }) }}
+                                            className={`text-xs opacity-50 hover:opacity-100`}
+                                        >
+                                            {layer.visible ? '👁️' : '🚫'}
+                                        </button>
+                                    </div>
+                                ))}
                             </div>
-                        ) : (
-                            <p className="text-xs text-slate-600 text-center py-4">Select a layer to edit</p>
                         )}
+                        
+                        {/* Properties Panel */}
+                        <div className="border-t border-slate-800 p-4 bg-slate-800/30">
+                            <h4 className="text-xs font-bold text-slate-500 mb-3 uppercase">Adjustments</h4>
+                            {editorState.selectedLayerId ? (
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-xs text-slate-400 flex justify-between mb-1">
+                                            Opacity <span>{Math.round((editorState.layers.find(l=>l.id===editorState.selectedLayerId)?.opacity || 1)*100)}%</span>
+                                        </label>
+                                        <input 
+                                            type="range" min="0" max="1" step="0.01"
+                                            value={editorState.layers.find(l=>l.id===editorState.selectedLayerId)?.opacity || 1}
+                                            onChange={(e) => handleUpdateLayer(editorState.selectedLayerId!, { opacity: parseFloat(e.target.value) })}
+                                            className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-slate-400 flex justify-between mb-1">
+                                            Rotation <span>{Math.round(editorState.layers.find(l=>l.id===editorState.selectedLayerId)?.rotation || 0)}°</span>
+                                        </label>
+                                        <input 
+                                            type="range" min="-180" max="180" step="1"
+                                            value={editorState.layers.find(l=>l.id===editorState.selectedLayerId)?.rotation || 0}
+                                            onChange={(e) => handleUpdateLayer(editorState.selectedLayerId!, { rotation: parseInt(e.target.value) })}
+                                            className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-xs text-slate-600 text-center py-4">Select a layer to edit</p>
+                            )}
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
         </div>
     );
