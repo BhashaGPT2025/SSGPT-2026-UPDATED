@@ -6,6 +6,7 @@ import { type QuestionPaperData, type PaperStyles } from '../types';
 import { generateHtmlFromPaperData } from '../services/htmlGenerator';
 import RichTextToolbar from './RichTextToolbar';
 import { SpinnerIcon } from './icons/SpinnerIcon';
+import { UploadIcon } from './icons/UploadIcon';
 
 const A4_WIDTH_PX = 794; 
 const A4_HEIGHT_PX = 1123;
@@ -44,8 +45,10 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     
     // Refs
     const pagesContainerRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const dragItemRef = useRef<{ el: HTMLElement, startX: number, startY: number, initialLeft: number, initialTop: number } | null>(null);
     
-    // Styles (Defaults, since sidebar is removed)
+    // Styles
     const styles: PaperStyles = { 
         fontFamily: "'Times New Roman', Times, serif", 
         headingColor: '#000000', 
@@ -57,11 +60,63 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     // Initial render & pagination
     useEffect(() => {
         onReady();
-        paginate();
+        if (paperData.htmlContent && !paperData.htmlContent.includes('<div class="question-block"')) {
+             // If htmlContent seems to be already processed/paginated string or empty, might need regeneration
+             // For now, always regenerate from data to ensure fresh pagination
+             paginate();
+        } else if (paperData.htmlContent) {
+             // If we have saved content, we might try to use it, but re-paginating is safer for layout consistency
+             paginate();
+        } else {
+             paginate();
+        }
+    }, []);
+
+    // Custom Drag Handler for Absolute Images
+    useEffect(() => {
+        const handleMouseDown = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            if (target.classList.contains('draggable-image')) {
+                e.preventDefault(); // Prevent default drag behavior
+                dragItemRef.current = {
+                    el: target,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    initialLeft: parseFloat(target.style.left || '0'),
+                    initialTop: parseFloat(target.style.top || '0')
+                };
+            }
+        };
+
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!dragItemRef.current) return;
+            e.preventDefault();
+            const { el, startX, startY, initialLeft, initialTop } = dragItemRef.current;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            el.style.left = `${initialLeft + dx}px`;
+            el.style.top = `${initialTop + dy}px`;
+        };
+
+        const handleMouseUp = () => {
+            dragItemRef.current = null;
+        };
+
+        const container = pagesContainerRef.current;
+        if (container) {
+            container.addEventListener('mousedown', handleMouseDown);
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+        }
+
+        return () => {
+            if (container) container.removeEventListener('mousedown', handleMouseDown);
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
     }, []);
 
     const paginate = useCallback(async () => {
-        // Create hidden container to measure content height
         const container = document.createElement('div');
         container.style.width = `${A4_WIDTH_PX}px`; 
         container.style.position = 'absolute';
@@ -72,7 +127,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         container.style.fontFamily = styles.fontFamily;
         container.className = 'prose max-w-none print-container';
 
-        // Generate HTML
+        // Use existing htmlContent if it looks like a full render, otherwise regenerate
         const htmlContent = generateHtmlFromPaperData(paperData, { 
             logoConfig: paperData.schoolLogo ? { src: paperData.schoolLogo, alignment: 'center' } : undefined
         });
@@ -80,18 +135,16 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         container.innerHTML = htmlContent;
         document.body.appendChild(container);
 
-        // Wait for resources
         await document.fonts.ready;
         await triggerMathRendering(container);
         
-        // Split content into pages
         const contentRoot = container.querySelector('#paper-root');
         const children = Array.from(contentRoot?.children || []);
         
         const pages: string[] = [];
         let currentPageHtml = ""; 
         let currentHeight = 0;
-        const maxPageHeight = A4_HEIGHT_PX - 120 - 50; // Height - Padding - Buffer
+        const maxPageHeight = A4_HEIGHT_PX - 120 - 50; 
 
         children.forEach(child => {
             const el = child as HTMLElement;
@@ -115,15 +168,67 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         document.body.removeChild(container);
 
         setPagesHtml(pages.length > 0 ? pages : [htmlContent]);
-        
-        // Re-trigger math rendering on the actual visible pages
         setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
-        
     }, [paperData]);
+
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const base64 = event.target?.result as string;
+            
+            // Find which page is currently in view or active
+            // For simplicity, we append to the first page, or user can drag it
+            const firstPageContent = pagesContainerRef.current?.querySelector('.paper-page-content');
+            
+            if (firstPageContent) {
+                const img = document.createElement('img');
+                img.src = base64;
+                img.className = 'draggable-image';
+                img.style.position = 'absolute';
+                img.style.top = '100px';
+                img.style.left = '100px';
+                img.style.width = '200px';
+                img.style.zIndex = '50';
+                img.style.cursor = 'move';
+                img.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+                
+                // Prevent native drag
+                img.draggable = false;
+                
+                firstPageContent.appendChild(img);
+            } else {
+                alert("Could not find a page to insert the image.");
+            }
+        };
+        reader.readAsDataURL(file);
+        e.target.value = ''; // Reset input
+    };
+
+    const handleSaveInternal = () => {
+        if (!pagesContainerRef.current) return;
+        
+        // Reconstruct the full HTML from the pages
+        let fullHtml = '';
+        const pages = pagesContainerRef.current.querySelectorAll('.paper-page-content');
+        pages.forEach(page => {
+            fullHtml += page.innerHTML;
+        });
+        
+        const updatedPaper = { ...paperData, htmlContent: fullHtml };
+        onSave(updatedPaper);
+        return updatedPaper;
+    };
 
     const handleExportPDF = async () => {
         if (isExporting) return;
         setIsExporting(true);
+        // Ensure latest edits are captured in state before export? 
+        // html2canvas captures DOM state, so explicit save isn't strictly needed for export visualization,
+        // but good practice to sync.
+        
         try {
             const pdf = new jsPDF('p', 'px', 'a4');
             const pdfW = pdf.internal.pageSize.getWidth();
@@ -158,15 +263,27 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     };
 
     useImperativeHandle(ref, () => ({
-        handleSaveAndExitClick: onSaveAndExit,
+        handleSaveAndExitClick: () => {
+            handleSaveInternal();
+            onSaveAndExit();
+        },
         openExportModal: handleExportPDF,
         openAnswerKeyModal: () => {},
         paperSubject: paperData.subject,
-        isAnswerKeyMode: false
+        isAnswerKeyMode: false,
+        isSaving: false
     }));
 
     return (
         <div className="flex flex-col h-full bg-slate-200 dark:bg-gray-900 relative">
+            <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleImageUpload} 
+                accept="image/png, image/jpeg, image/jpg" 
+                className="hidden" 
+            />
+
             {isExporting && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center text-white">
                     <SpinnerIcon className="w-16 h-16 mb-6 text-indigo-400" />
@@ -174,13 +291,21 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 </div>
             )}
             
-            {/* Floating toolbar for basic text edits */}
+            {/* Floating Image Button */}
+            <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="fixed top-24 right-8 z-50 flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-indigo-700 transition-all font-semibold text-sm hover:scale-105"
+            >
+                <UploadIcon className="w-4 h-4" />
+                Add Image
+            </button>
+            
             <RichTextToolbar editorRef={pagesContainerRef} />
 
             <main className="flex-1 overflow-auto p-8 bg-slate-300 dark:bg-slate-950/20" ref={pagesContainerRef}>
                 {pagesHtml.map((html, i) => (
                     <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-10 relative print:shadow-none print:mb-0" 
-                        style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX, overflow: 'hidden' }}>
+                        style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX, overflow: 'hidden', position: 'relative' }}>
                         <div 
                              contentEditable={true}
                              suppressContentEditableWarning={true}
@@ -191,7 +316,8 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                                  background: 'white', 
                                  padding: '60px',
                                  boxSizing: 'border-box',
-                                 overflow: 'hidden'
+                                 overflow: 'hidden',
+                                 position: 'relative' // Needed for absolute children
                              }} 
                              dangerouslySetInnerHTML={{ __html: html }} 
                         />
@@ -201,9 +327,8 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                     </div>
                 ))}
                 
-                {/* Tip for user */}
                 <div className="text-center text-slate-500 text-sm pb-10">
-                    Tip: Click anywhere on the paper to edit text before exporting.
+                    Tip: Click text to edit. Add images using the button top-right. Drag images to position them.
                 </div>
             </main>
         </div>
