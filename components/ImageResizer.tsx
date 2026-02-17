@@ -1,11 +1,12 @@
 
 import React, { useRef, useEffect } from 'react';
-import { ImageState } from '../types'; // Assuming types are stored here
+import { ImageState } from '../types';
 
 interface ImageResizerProps {
   imageState: ImageState;
   isSelected: boolean;
   onUpdate: (updatedState: Partial<ImageState>) => void;
+  onResizeEnd?: () => void;
   children: React.ReactNode;
 }
 
@@ -15,6 +16,7 @@ const ImageResizer: React.FC<ImageResizerProps> = ({
   imageState,
   isSelected,
   onUpdate,
+  onResizeEnd,
   children,
 }) => {
   const isResizingRef = useRef(false);
@@ -58,7 +60,7 @@ const ImageResizer: React.FC<ImageResizerProps> = ({
       let newX = x;
       let newY = y;
 
-      // Calculate simple resizing first
+      // Calculate resizing
       if (dir.includes('e')) newWidth = width + deltaX;
       if (dir.includes('w')) {
         newWidth = width - deltaX;
@@ -70,21 +72,21 @@ const ImageResizer: React.FC<ImageResizerProps> = ({
         newY = y + deltaY;
       }
 
-      // Aspect Ratio Logic (Corner handles only usually)
-      if (keepRatio && (dir.length === 2)) {
-        if (dir === 'se' || dir === 'nw') {
-          // Calculate based on dominant delta or specific logic
-          // Here we prioritize width change driving height change
+      // Aspect Ratio Lock Logic (Corner handles)
+      if (keepRatio && dir.length === 2) {
+        if (dir === 'se') {
           newHeight = newWidth / aspectRatio;
-          // If dragging NW, we also need to adjust Y based on the ratio correction
-          if (dir === 'nw') {
-             newY = y + (height - newHeight);
-          }
-        } else if (dir === 'sw' || dir === 'ne') {
+        } else if (dir === 'sw') {
+          newHeight = newWidth / aspectRatio;
+          // Since we are moving left edge, X was already updated based on width change in 'w' block
+          // But we need to ensure height matches width expansion
+        } else if (dir === 'ne') {
            newHeight = newWidth / aspectRatio;
-           if (dir === 'ne') {
-             newY = y + (height - newHeight);
-           }
+           newY = y + (height - newHeight);
+        } else if (dir === 'nw') {
+           // For NW, width drives height
+           newHeight = newWidth / aspectRatio;
+           newY = y + (height - newHeight);
         }
       }
 
@@ -104,6 +106,7 @@ const ImageResizer: React.FC<ImageResizerProps> = ({
       if (isResizingRef.current) {
         isResizingRef.current = false;
         directionRef.current = null;
+        if (onResizeEnd) onResizeEnd();
       }
     };
 
@@ -114,12 +117,12 @@ const ImageResizer: React.FC<ImageResizerProps> = ({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [onUpdate]);
+  }, [onUpdate, onResizeEnd]);
 
   if (!isSelected) return <>{children}</>;
 
   const Handle = ({ dir, cursor }: { dir: Direction; cursor: string }) => {
-    // Tailwind positioning based on direction
+    // Tailwind positioning
     const posClass = {
       n: 'top-0 left-1/2 -translate-x-1/2 -mt-1.5',
       s: 'bottom-0 left-1/2 -translate-x-1/2 -mb-1.5',
@@ -133,7 +136,7 @@ const ImageResizer: React.FC<ImageResizerProps> = ({
 
     return (
       <div
-        className={`absolute w-3 h-3 bg-blue-500 border border-white rounded-sm z-50 ${posClass}`}
+        className={`absolute w-3 h-3 bg-indigo-600 border border-white rounded-sm z-50 ${posClass} shadow-sm`}
         style={{ cursor }}
         onMouseDown={(e) => handleMouseDown(e, dir)}
       />
@@ -141,7 +144,7 @@ const ImageResizer: React.FC<ImageResizerProps> = ({
   };
 
   return (
-    <div className="relative w-full h-full group outline outline-2 outline-blue-500">
+    <div className="relative w-full h-full group outline outline-2 outline-indigo-600">
       {children}
       {/* Corner Handles */}
       <Handle dir="nw" cursor="nw-resize" />

@@ -4,8 +4,6 @@ import Cropper from 'react-easy-crop';
 import { getCroppedImg } from '../utils/canvasUtils';
 import ImageResizer from './ImageResizer';
 import { ImageState } from '../types'; 
-
-// Import react-easy-crop types
 import { Area } from 'react-easy-crop/types';
 
 interface EditableImageProps {
@@ -27,7 +25,7 @@ const EditableImage: React.FC<EditableImageProps> = ({
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
-  // Resize Handler
+  // Resize Handler - Called continuously during drag
   const handleResize = (updates: Partial<ImageState>) => {
     onUpdateImage(imageState.id, updates);
   };
@@ -86,11 +84,11 @@ const EditableImage: React.FC<EditableImageProps> = ({
               draggable={false}
             />
             
-            {/* Toolbar appearing on selection */}
+            {/* Toolbar appearing on selection (only if not cropping) */}
             {isSelected && !isCropMode && (
-              <div className="absolute -top-10 right-0 flex gap-2 bg-white shadow-md p-1 rounded z-50">
+              <div className="absolute -top-10 right-0 flex gap-2 bg-white shadow-lg border border-slate-200 p-1 rounded-md z-50">
                 <button
-                  className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-black font-medium transition-colors"
+                  className="text-xs px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-800 font-semibold transition-colors"
                   onMouseDown={(e) => { e.stopPropagation(); setIsCropMode(true); }}
                 >
                   Crop
@@ -103,8 +101,8 @@ const EditableImage: React.FC<EditableImageProps> = ({
 
       {/* Crop Overlay / Modal */}
       {isCropMode && (
-        <div className="fixed inset-0 z-[100] bg-black bg-opacity-80 flex flex-col items-center justify-center p-4">
-          <div className="relative w-full max-w-4xl h-[60vh] bg-black border border-gray-700 rounded-lg overflow-hidden">
+        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-4">
+          <div className="relative w-full max-w-4xl h-[60vh] bg-black border border-slate-700 rounded-xl overflow-hidden shadow-2xl">
             <Cropper
               image={imageState.src}
               crop={crop}
@@ -116,9 +114,9 @@ const EditableImage: React.FC<EditableImageProps> = ({
             />
           </div>
           
-          <div className="flex gap-4 mt-4 bg-white p-4 rounded shadow-lg">
-            <div className="flex flex-col">
-                <label className="text-xs font-bold text-gray-500 mb-1">Zoom</label>
+          <div className="flex items-center gap-6 mt-6 bg-white dark:bg-slate-800 p-4 rounded-xl shadow-xl border dark:border-slate-700">
+            <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Zoom</label>
                 <input
                 type="range"
                 value={zoom}
@@ -127,22 +125,24 @@ const EditableImage: React.FC<EditableImageProps> = ({
                 step={0.1}
                 aria-labelledby="Zoom"
                 onChange={(e) => setZoom(Number(e.target.value))}
-                className="w-48 cursor-pointer"
+                className="w-48 h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                 />
             </div>
-            <div className="h-full w-px bg-gray-300 mx-2"></div>
-            <button
-              onClick={() => setIsCropMode(false)}
-              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded text-sm font-bold text-gray-700 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleConfirmCrop}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-bold text-white transition-colors"
-            >
-              Apply Crop
-            </button>
+            <div className="h-8 w-px bg-slate-200 dark:bg-slate-700"></div>
+            <div className="flex gap-3">
+                <button
+                onClick={() => setIsCropMode(false)}
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-sm font-bold text-slate-700 dark:text-slate-200 transition-colors"
+                >
+                Cancel
+                </button>
+                <button
+                onClick={handleConfirmCrop}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm font-bold text-white transition-colors shadow-md"
+                >
+                Apply Crop
+                </button>
+            </div>
           </div>
         </div>
       )}
